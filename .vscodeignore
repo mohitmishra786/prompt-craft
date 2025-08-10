@@ -1,0 +1,10 @@
+# Exclude non-runtime assets from the VSIX
+node_modules/**
+.git/**
+.github/**
+demo/**
+**/*.map
+coverage/**
+.vscode/**
+**/*.test.*
+**/*.spec.*

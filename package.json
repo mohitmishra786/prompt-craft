@@ -3,17 +3,31 @@
   "displayName": "Prompt Craft",
   "description": "Generate detailed prompts for AI coding tools based on errors and project analysis.",
   "version": "0.0.1",
-  "publisher": "promptcraft",
+  "publisher": "mohitmishra",
   "engines": {
     "vscode": "^1.84.0"
   },
   "categories": [
     "Other"
   ],
+  "keywords": [
+    "prompts",
+    "ai",
+    "groq",
+    "analysis",
+    "errors"
+  ],
   "activationEvents": [
     "workspaceContains:README.md"
   ],
   "main": "./out/extension.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mohitmishra786/prompt-craft"
+  },
+  "bugs": {
+    "url": "https://github.com/mohitmishra786/prompt-craft/issues"
+  },
   "contributes": {
     "commands": [
       {
@@ -49,7 +63,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "package": "echo 'Use vsce to package'",
+    "package": "npx vsce package",
     "lint": "echo 'No linter configured'"
   },
   "devDependencies": {
@@ -57,6 +71,15 @@
     "@types/vscode": "^1.84.0",
     "typescript": "^5.5.0"
   },
+  "files": [
+    "out/**/*",
+    "src/**/*",
+    "package.json",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+    "PUBLISHING.md"
+  ],
   "dependencies": {
     "axios": "^1.7.2"
   }
