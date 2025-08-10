@@ -24,7 +24,26 @@
         "command": "prompt-craft.analyzeProject",
         "title": "Prompt Craft: Analyze Project and Generate Prompts"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Prompt Craft",
+      "properties": {
+        "promptCraft.groqApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Groq API key for optional LLM-enhanced prompt generation. Get a key from groq.com. Leave blank to use template-based generation.",
+          "scope": "application"
+        },
+        "promptCraft.requestTimeoutMs": {
+          "type": "number",
+          "default": 5000,
+          "description": "Timeout for Groq API requests in milliseconds.",
+          "scope": "application",
+          "minimum": 1000,
+          "maximum": 20000
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
@@ -38,6 +57,8 @@
     "@types/vscode": "^1.84.0",
     "typescript": "^5.5.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "axios": "^1.7.2"
+  }
 }
 

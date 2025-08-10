@@ -1,7 +1,8 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import { analyzeProject, getCodeSnippetAround } from "./analyzer";
-import { buildErrorPrompt, buildProjectPrompt, defaultProjectTaskIdeas, ecommerceTaskIdeas } from "./templates";
+import { buildErrorPrompt, buildProjectPrompt, defaultProjectTaskIdeas, ecommerceTaskIdeas, buildLLMUserProjectMessage, buildLLMUserErrorMessage } from "./templates";
+import { buildGroqClientFromSettings, buildErrorSystemPrompt, buildProjectSystemPrompt } from "./llm";
 
 let output: vscode.OutputChannel | undefined;
 
@@ -95,8 +96,24 @@ async function handleGenerateErrorPrompt(): Promise<void> {
     codeSnippet: snippet,
     architectureSummary: analysis?.architectureSummary
   });
+  let finalPrompt = prompt;
+  const apiKey = vscode.workspace.getConfiguration().get<string>("promptCraft.groqApiKey");
+  const timeoutMs = vscode.workspace.getConfiguration().get<number>("promptCraft.requestTimeoutMs");
+  const groq = buildGroqClientFromSettings(apiKey, timeoutMs);
+  let errorLlmUsed = false;
+  if (groq) {
+    try {
+      const system = buildErrorSystemPrompt();
+      const user = buildLLMUserErrorMessage(prompt);
+      const content = await groq.completeJSON({ model: "llama3-8b-8192", system, user });
+      finalPrompt = content.trim();
+      errorLlmUsed = true;
+    } catch (err) {
+      log(`LLM error prompt refinement failed, using template: ${toErrorMessage(err)}`);
+    }
+  }
 
-  showPromptToUser("Error Prompt", prompt);
+  showPromptToUser("Error Prompt", `Generation: ${errorLlmUsed ? "LLM-enhanced" : "Template"}\n\n${finalPrompt}`);
 }
 
 async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
@@ -128,7 +145,7 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
     analysis.models.length ? `Models: ${analysis.models.map((m) => `${m.file} [${m.fields.slice(0,5).join(" ")}]`).join(", ")}` : undefined
   ].filter(Boolean).join("\n");
 
-  const prompts = ideas.map((idea) =>
+  let prompts = ideas.map((idea) =>
     buildProjectPrompt({
       techStack: analysis.techStack,
       dependencies: analysis.dependencies,
@@ -136,6 +153,34 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
       contextHeader: contextHeaderLines
     })
   );
+
+  // Optional LLM enhancement for project prompts
+  let projectLlmUsed = false;
+  const apiKey = vscode.workspace.getConfiguration().get<string>("promptCraft.groqApiKey");
+  const timeoutMs = vscode.workspace.getConfiguration().get<number>("promptCraft.requestTimeoutMs");
+  const groq = buildGroqClientFromSettings(apiKey, timeoutMs);
+  if (groq) {
+    try {
+      const system = buildProjectSystemPrompt();
+      const user = buildLLMUserProjectMessage({
+        techStack: analysis.techStack,
+        detection: analysis.detection,
+        domain: analysis.domain,
+        architectureSummary: analysis.architectureSummary,
+        dependencies: analysis.dependencies.slice(0, 50),
+        controllers: analysis.controllers,
+        models: analysis.models,
+        sampleQueries: analysis["sampleQueries"] ?? [],
+        readmeSummary: analysis.readmeSummary ?? ""
+      });
+      const content = await groq.completeJSON({ model: "llama3-8b-8192", system, user });
+      // Show only refined content (header already summarizes context)
+      prompts = [content.trim()];
+      projectLlmUsed = true;
+    } catch (err) {
+      log(`LLM project generation failed, falling back to templates: ${toErrorMessage(err)}`);
+    }
+  }
 
   const techExtras: string[] = [];
   if (analysis.detection.usesExpress) techExtras.push("Express");
@@ -146,9 +191,12 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
     `Tech Stack: ${analysis.techStack}${techExtras.length ? ` (+ ${techExtras.join(', ')})` : ''}\n` +
     `Architecture: ${analysis.architectureSummary}\n` +
     `Dependencies: ${analysis.dependencies.slice(0, 25).join(", ")}\n` +
-    (analysis.readmeSummary ? `README (summary): ${analysis.readmeSummary}\n` : "");
+    (analysis.readmeSummary ? `README (summary): ${analysis.readmeSummary}\n` : "") +
+    `Generation: ${projectLlmUsed ? "LLM-enhanced" : "Template"}`;
 
-  const combined = [header, ...prompts.map((p, i) => `===== Prompt ${i + 1} =====\n${p}`)].join("\n\n\n");
+  const combined = projectLlmUsed
+    ? [header, prompts[0]].join("\n\n")
+    : [header, ...prompts.map((p, i) => `===== Prompt ${i + 1} =====\n${p}`)].join("\n\n\n");
   showPromptToUser("Project Prompts", combined);
 }
 

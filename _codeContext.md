@@ -37,3 +37,11 @@ Repo housekeeping:
 
 Added file: `TODO.md` with a prioritized, prototype-focused backlog (domain-aware prompts, deeper code insights, error integration, UX settings, multi-language groundwork, packaging/QA).
 
+
+Latest changes before v0.0.1 tag:
+- Integrated optional Groq LLM (`llama3-8b-8192`) via `src/llm.ts`; settings `promptCraft.groqApiKey`, `promptCraft.requestTimeoutMs` added in `package.json`.
+- Fallback to `GROQ_API_KEY` env var if setting is empty.
+- Project prompts: when LLM is used, output shows shared header + refined content only (no duplicated context, no numbering). Added "Generation: LLM-enhanced" marker.
+- Error prompts: added LLM refinement path and marker; templates still used on failure.
+- Analyzer: added `sampleQueries` collection for additional context to LLM.
+

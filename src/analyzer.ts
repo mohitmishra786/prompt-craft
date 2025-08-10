@@ -28,6 +28,7 @@ export interface ProjectAnalysisResult {
   domain: InferredDomain;
   controllers: { file: string; functions: string[] }[];
   models: { file: string; fields: string[] }[];
+  sampleQueries?: string[];
 }
 
 export async function analyzeProject(rootPath: string, maxFiles: number = 100): Promise<ProjectAnalysisResult> {
@@ -45,6 +46,7 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
   const domain = await inferDomain(readmeSummary, files, rootPath);
   const controllers = await extractControllerFunctions(files, rootPath);
   const models = await extractMongooseModelFields(files, rootPath);
+  const sampleQueries = await extractSampleQueries(files);
 
   return {
     rootPath,
@@ -55,7 +57,8 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
     detection,
     domain,
     controllers,
-    models
+    models,
+    sampleQueries
   };
 }
 
@@ -191,5 +194,34 @@ function detectHints(dependencies: string[], files: string[]) {
   const hasTests = files.some((f) => /\.(test|spec)\.(js|ts|jsx|tsx)$/.test(f));
   const hasAuthHints = files.some((f) => /auth|login|signup|passport|jwt/i.test(f));
   return { usesExpress, usesReact, usesMongo, hasAuthHints, hasTests };
+}
+
+// Lightweight extraction of simple Mongo queries from code for richer context
+async function extractSampleQueries(files: string[]): Promise<string[]> {
+  const queries: string[] = [];
+  const targets = files.filter((f) => /\.(js|ts)$/i.test(f));
+  for (const file of targets.slice(0, 50)) {
+    try {
+      const raw = await fsp.readFile(file, "utf8");
+      const patterns = [
+        /\.find\([^)]*\)/g,
+        /\.findOne\([^)]*\)/g,
+        /\.updateOne\([^)]*\)/g,
+        /\.aggregate\([^)]*\)/g
+      ];
+      for (const rx of patterns) {
+        const matches = raw.match(rx);
+        if (matches) {
+          for (const m of matches) {
+            queries.push(m.slice(0, 140));
+            if (queries.length >= 10) return queries;
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+  return queries;
 }
 

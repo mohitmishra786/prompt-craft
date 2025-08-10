@@ -13,6 +13,7 @@ Generate detailed prompts for AI coding tools (Copilot, Cursor, ChatGPT) from yo
 - Scans Problems (Diagnostics) to identify errors and build a context-rich prompt
 - Analyzes project structure, dependencies (from `package.json`), and README to create 3–5 starting prompts
 - Outputs to a dedicated Output Channel and auto-copies to clipboard
+- Optional LLM enhancement via Groq (model `llama3-8b-8192`) to condense context and generate varied tasks
 
 ### Quick Start
 
@@ -24,6 +25,12 @@ Generate detailed prompts for AI coding tools (Copilot, Cursor, ChatGPT) from yo
 4. Launch the extension in a new Extension Development Host:
    - Press F5 (or use the provided launch configuration)
 
+### Optional: Enable Groq LLM enhancement
+- Get an API key from `https://groq.com`.
+- In VS Code Settings → search for "Prompt Craft" → set `promptCraft.groqApiKey`.
+- You can also adjust `promptCraft.requestTimeoutMs` (default 5000).
+- If no key is set or the request fails, the extension falls back to template-based generation.
+
 ### Commands
 
 - Generate Error Prompt: Attempts to read the first error from VS Code Problems. If none found, you'll be prompted to paste error output. It then extracts file/line (when available), grabs a code snippet, and generates a detailed prompt.
@@ -34,7 +41,7 @@ Generate detailed prompts for AI coding tools (Copilot, Cursor, ChatGPT) from yo
 
 - Terminal output capture is not part of the stable API. This prototype reads Diagnostics and accepts pasted error output. TODO: Explore optional proposed APIs or task events for richer automation.
 - Scope focuses on JavaScript/TypeScript Node.js projects to keep the prototype simple and fast. Domain inference and code summaries use simple regexes (no heavy parsers) and may miss complex patterns.
-- No external LLM calls; all prompts are template-based.
+- LLM is optional. If disabled/unavailable, prompts fall back to templates.
 
 ### Development
 

@@ -108,3 +108,12 @@ export function ecommerceTaskIdeas(extra: {
   return ideas.slice(0, 6);
 }
 
+// LLM prompts (used by extension when API key is present)
+export function buildLLMUserProjectMessage(analysis: Record<string, unknown>): string {
+  return `Project analysis JSON (truncated as needed):\n\n${JSON.stringify(analysis, null, 2).slice(0, 8000)}`;
+}
+
+export function buildLLMUserErrorMessage(errorPrompt: string): string {
+  return `Error prompt to refine:\n\n${errorPrompt.slice(0, 8000)}`;
+}
+
