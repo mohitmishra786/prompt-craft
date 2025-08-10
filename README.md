@@ -1,59 +1,86 @@
 ## Prompt Craft (VS Code Extension)
 
-Generate detailed prompts for AI coding tools (Copilot, Cursor, ChatGPT) from your project's context. It supports two workflows:
+Prompt Craft generates concise, AI-ready prompts from your codebase. It converts diagnostics and project context into high-signal prompts designed to work well with Copilot, Cursor, and ChatGPT.
 
-- Error detection and prompt generation
-- New project analysis and prompt generation
+### Install
 
-### Features
+- VS Code Marketplace: `mohitmishra.prompt-craft`
+  - https://marketplace.visualstudio.com/items?itemName=mohitmishra.prompt-craft
+- From file: install `prompt-craft-0.0.1.vsix` (Extensions → … → Install from VSIX)
 
-- Commands:
-  - "Prompt Craft: Generate Error Prompt"
-  - "Prompt Craft: Analyze Project and Generate Prompts"
-- Scans Problems (Diagnostics) to identify errors and build a context-rich prompt
-- Analyzes project structure, dependencies (from `package.json`), and README to create 3–5 starting prompts
-- Outputs to a dedicated Output Channel and auto-copies to clipboard
-- Optional LLM enhancement via Groq (model `llama3-8b-8192`) to condense context and generate varied tasks
+### What it does
 
-### Quick Start
-
-1. Open this folder in VS Code.
-2. Install dependencies:
-   - Run: `npm install` (devDependencies include TypeScript typings)
-3. Build the extension:
-   - Run: `npm run compile`
-4. Launch the extension in a new Extension Development Host:
-   - Press F5 (or use the provided launch configuration)
-
-### Optional: Enable Groq LLM enhancement
-- Get an API key from `https://groq.com`.
-- In VS Code Settings → search for "Prompt Craft" → set `promptCraft.groqApiKey`.
-- You can also adjust `promptCraft.requestTimeoutMs` (default 5000).
-- If no key is set or the request fails, the extension falls back to template-based generation.
+- Error prompts: transforms Problems (Diagnostics) or a pasted stack trace into a structured prompt with Context, Error Details, Code Snippet (when resolvable), Goal, and Constraints.
+- Project prompts: scans `package.json`, `README.md`, and up to ~100 code/text files to infer tech stack, dependencies, and architecture signals; emits domain-aware tasks under a shared Project Context header.
+- LLM enhancement (optional): integrates Groq (`llama3-8b-8192`) to condense context and produce 4–6 tailored tasks. Falls back to templates if the key is missing or requests time out.
 
 ### Commands
 
-- Generate Error Prompt: Attempts to read the first error from VS Code Problems. If none found, you'll be prompted to paste error output. It then extracts file/line (when available), grabs a code snippet, and generates a detailed prompt.
+- Prompt Craft: Analyze Project and Generate Prompts
+- Prompt Craft: Generate Error Prompt
 
-- Analyze Project and Generate Prompts: Reads `package.json`, `README.md` (if present), and scans up to 100 files to infer a simple architecture summary. It then emits 3–6 tailored prompts. The output now uses a shared "Project Context" header to avoid repetition and includes domain inference (e.g., e-commerce) and simple controller/model summaries.
+### Quick start (development host)
 
-### Notes and Limitations
+1) Open this folder in VS Code
+2) `npm install`
+3) `npm run compile`
+4) F5 to start the Extension Development Host
 
-- Terminal output capture is not part of the stable API. This prototype reads Diagnostics and accepts pasted error output. TODO: Explore optional proposed APIs or task events for richer automation.
-- Scope focuses on JavaScript/TypeScript Node.js projects to keep the prototype simple and fast. Domain inference and code summaries use simple regexes (no heavy parsers) and may miss complex patterns.
-- LLM is optional. If disabled/unavailable, prompts fall back to templates.
+In the Dev Host, open a workspace to analyze (e.g., `demo/ecom-backend`), then run the commands from the Command Palette.
+
+### LLM setup (optional)
+
+- Get a Groq API key from https://groq.com
+- Set in VS Code Settings:
+  - `promptCraft.groqApiKey`
+  - `promptCraft.requestTimeoutMs` (default 5000)
+- Or export before launching VS Code: `GROQ_API_KEY=...`
+
+The Output shows “Generation: LLM-enhanced” when the model is used; otherwise “Generation: Template”.
+
+### Demo workspace
+
+- `demo/ecom-backend`: minimal Express + MongoDB project with an intentional error in `src/app.js` and a crash route at `/boom`.
+- Try both flows:
+  - Diagnostics-based error prompt: uncomment `const broken = ;` → Problems shows an error → run Generate Error Prompt.
+  - Stack-based error prompt: run the app, hit `/boom`, copy the stack → run Generate Error Prompt and paste.
+
+### Architecture and heuristics
+
+- Tech stack detection via `package.json` (TypeScript vs JavaScript)
+- Architecture signals from folder layout (`src/`, `controllers/`, `models/`, `routes/`)
+- Domain inference (e.g., e-commerce) from README and filenames
+- Lightweight extraction of controller function exports and model/schema fields
+
+### Security and privacy
+
+- No hard-coded keys. Keys are stored in user/workspace settings or read from the environment.
+- No `eval` or arbitrary code execution.
+- Reads only within the open workspace.
+- When LLM is enabled, requests include a compact analysis JSON (tech stack, dependencies, README summary, architecture summary, limited controller/model summaries). Do not include sensitive content in README or code if this is a concern.
+
+### Troubleshooting
+
+- Commands don’t appear: ensure you are in the Extension Development Host; open a workspace with a `README.md` or run the command explicitly.
+- LLM not used: set `promptCraft.groqApiKey` in the Dev Host Settings, or launch VS Code from a shell with `GROQ_API_KEY`; check for “Generation: LLM-enhanced”.
+- Snippet missing: paste a stack trace that includes a resolvable path and line.
 
 ### Development
 
-- Source in `src/` (TypeScript), compiled to `out/`.
+- Code: TypeScript in `src/`, compiled to `out/`
 - Key files:
-  - `src/extension.ts`: Activation, commands, and UI
-  - `src/analyzer.ts`: Project scanning and heuristics
-  - `src/templates.ts`: Prompt templates
-  - `src/domain.ts`: Domain inference and simple controller/model extractors
+  - `src/extension.ts`: activation, commands, output
+  - `src/analyzer.ts`: workspace scanning and heuristics
+  - `src/templates.ts`: templates and helper builders
+  - `src/llm.ts`: Groq wrapper and prompts
+  - `src/domain.ts`: domain inference and simple code extraction
 
-### Security
+### Distribution
 
-- No `eval` or arbitrary code execution.
-- Reads files only from the open workspace.
+- Marketplace: https://marketplace.visualstudio.com/items?itemName=mohitmishra.prompt-craft
+- Local VSIX: `npx vsce package` → install the generated `.vsix`
+
+### License
+
+See `LICENSE`.
 
