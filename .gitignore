@@ -1,0 +1,29 @@
+# macOS
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+*.tgz
+
+# Build outputs
+out/
+dist/
+coverage/
+
+# VS Code
+.vscode/*
+!.vscode/launch.json
+
+# Env
+.env
+.env.*
+
+# Packages
+*.vsix
+
+# IDE
+.idea/

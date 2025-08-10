@@ -1,0 +1,43 @@
+{
+  "name": "prompt-craft",
+  "displayName": "Prompt Craft",
+  "description": "Generate detailed prompts for AI coding tools based on errors and project analysis.",
+  "version": "0.0.1",
+  "publisher": "promptcraft",
+  "engines": {
+    "vscode": "^1.84.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "workspaceContains:README.md"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "prompt-craft.generateErrorPrompt",
+        "title": "Prompt Craft: Generate Error Prompt"
+      },
+      {
+        "command": "prompt-craft.analyzeProject",
+        "title": "Prompt Craft: Analyze Project and Generate Prompts"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "package": "echo 'Use vsce to package'",
+    "lint": "echo 'No linter configured'"
+  },
+  "devDependencies": {
+    "@types/node": "^18.19.0",
+    "@types/vscode": "^1.84.0",
+    "typescript": "^5.5.0"
+  },
+  "dependencies": {}
+}
+
