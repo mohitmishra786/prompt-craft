@@ -37,24 +37,107 @@
       {
         "command": "prompt-craft.analyzeProject",
         "title": "Prompt Craft: Analyze Project and Generate Prompts"
+      },
+      {
+        "command": "prompt-craft.selectProvider",
+        "title": "Prompt Craft: Select LLM Provider"
+      },
+      {
+        "command": "prompt-craft.testProvider",
+        "title": "Prompt Craft: Test Provider Connection"
+      },
+      {
+        "command": "prompt-craft.reloadProviders",
+        "title": "Prompt Craft: Reload Providers from Settings"
+      },
+      {
+        "command": "prompt-craft.showProviderStatus",
+        "title": "Prompt Craft: Show Provider Status"
       }
     ],
     "configuration": {
       "title": "Prompt Craft",
       "properties": {
+        "promptCraft.activeProvider": {
+          "type": "string",
+          "enum": ["groq", "openai", "azure-openai", "claude", "ollama"],
+          "default": "groq",
+          "description": "Active LLM provider to use for prompt generation",
+          "scope": "application"
+        },
         "promptCraft.groqApiKey": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Groq API key for optional LLM-enhanced prompt generation. Get a key from groq.com. Leave blank to use template-based generation.",
+          "markdownDescription": "Groq API key for LLM-enhanced prompt generation. Get a key from [groq.com](https://groq.com). Leave blank to use template-based generation.",
           "scope": "application"
         },
         "promptCraft.requestTimeoutMs": {
           "type": "number",
           "default": 5000,
-          "description": "Timeout for Groq API requests in milliseconds.",
+          "description": "Timeout for LLM API requests in milliseconds.",
           "scope": "application",
           "minimum": 1000,
           "maximum": 20000
+        },
+        "promptCraft.openai.apiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "OpenAI API key. Get a key from [platform.openai.com](https://platform.openai.com).",
+          "scope": "application"
+        },
+        "promptCraft.openai.model": {
+          "type": "string",
+          "enum": ["gpt-4", "gpt-4-turbo", "gpt-3.5-turbo"],
+          "default": "gpt-4-turbo",
+          "description": "OpenAI model to use",
+          "scope": "application"
+        },
+        "promptCraft.openai.timeout": {
+          "type": "number",
+          "default": 10000,
+          "description": "Timeout for OpenAI API requests in milliseconds.",
+          "scope": "application",
+          "minimum": 1000,
+          "maximum": 60000
+        },
+        "promptCraft.azureOpenAI.endpoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Azure OpenAI endpoint URL (e.g., https://your-resource.openai.azure.com)",
+          "scope": "application"
+        },
+        "promptCraft.azureOpenAI.apiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Azure OpenAI API key. Leave blank to use Azure CLI or Managed Identity authentication.",
+          "scope": "application"
+        },
+        "promptCraft.azureOpenAI.deploymentName": {
+          "type": "string",
+          "default": "",
+          "description": "Azure OpenAI deployment name",
+          "scope": "application"
+        },
+        "promptCraft.azureOpenAI.apiVersion": {
+          "type": "string",
+          "default": "2024-02-01",
+          "description": "Azure OpenAI API version",
+          "scope": "application"
+        },
+        "promptCraft.azureOpenAI.authMethod": {
+          "type": "string",
+          "enum": ["apiKey", "azureCli", "managedIdentity"],
+          "default": "apiKey",
+          "description": "Authentication method for Azure OpenAI",
+          "scope": "application"
+        },
+        "promptCraft.azureOpenAI.timeout": {
+          "type": "number",
+          "default": 10000,
+          "description": "Timeout for Azure OpenAI API requests in milliseconds.",
+          "scope": "application",
+          "minimum": 1000,
+          "maximum": 60000
         }
       }
     }
