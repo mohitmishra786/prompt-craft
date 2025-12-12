@@ -2,7 +2,7 @@
   "name": "prompt-craft",
   "displayName": "Prompt Craft",
   "description": "Generate detailed prompts for AI coding tools based on errors and project analysis.",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "publisher": "mohitmishra",
   "engines": {
     "vscode": "^1.84.0"

@@ -1,6 +1,6 @@
 # Changelog
 
-## v0.2.0 - 2025-12-13
+## v0.0.2 - 2025-12-13
 
 ### Major Release: Multi-Provider Support
 
