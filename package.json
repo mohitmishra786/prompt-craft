@@ -4,6 +4,7 @@
   "description": "Generate detailed prompts for AI coding tools based on errors and project analysis.",
   "version": "0.0.2",
   "publisher": "mohitmishra",
+  "icon": "prompt-craft.png",
   "engines": {
     "vscode": "^1.84.0"
   },
