@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.3 - 2025-12-13
+
+### Fixed
+- Added extension icon to marketplace display
+
+---
+
 ## v0.0.2 - 2025-12-13
 
 ### Major Release: Multi-Provider Support
