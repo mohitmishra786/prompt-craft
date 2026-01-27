@@ -5,6 +5,7 @@ import { buildErrorPrompt, buildProjectPrompt, defaultProjectTaskIdeas, ecommerc
 import { buildGroqClientFromSettings, buildErrorSystemPrompt, buildProjectSystemPrompt } from "./llm";
 import { ProviderFactory, ProviderRegistry } from "./providers/factory";
 import { sanitizePrompt } from "./sanitizer";
+import { TelemetryService } from "./telemetry";
 
 let output: vscode.OutputChannel | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -28,6 +29,9 @@ export async function activate(context: vscode.ExtensionContext) {
     updateStatusBar();
   }
 
+  // Initialize telemetry
+  TelemetryService.getInstance().sendEvent("EXTENSION_ACTIVATED");
+
   const generateErrorPromptCmd = vscode.commands.registerCommand(
     "prompt-craft.generateErrorPrompt",
     async () => {
@@ -36,6 +40,7 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (err) {
         log(`Failed to generate error prompt: ${toErrorMessage(err)}`);
         void vscode.window.showErrorMessage("Prompt Craft: Failed to generate error prompt.");
+        TelemetryService.getInstance().sendEvent("ERROR_PROMPT_FAILED", { error: toErrorMessage(err) });
       }
     }
   );
@@ -254,6 +259,12 @@ async function handleGenerateErrorPrompt(): Promise<void> {
   }
 
   showPromptToUser("Error Prompt", `Generation: ${errorLlmUsed ? "LLM-enhanced" : "Template"}\n\n${finalPrompt}`);
+  
+  TelemetryService.getInstance().sendEvent("ERROR_PROMPT_GENERATED", {
+    language,
+    generationType: errorLlmUsed ? "llm" : "template",
+    hasClipboard: (!errorMessage || errorMessage.length === 0) ? "yes" : "no"
+  });
 }
 
 async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
@@ -339,6 +350,15 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
     ? [header, prompts[0]].join("\n\n")
     : [header, ...prompts.map((p, i) => `===== Prompt ${i + 1} =====\n${p}`)].join("\n\n\n");
   showPromptToUser("Project Prompts", combined);
+
+  TelemetryService.getInstance().sendEvent("PROJECT_ANALYSIS_COMPLETED", {
+    techStack: analysis.techStack,
+    domain: analysis.domain.domain,
+    generationType: projectLlmUsed ? "llm" : "template"
+  }, {
+    fileCount: analysis.fileTree ? analysis.fileTree.split("\n").length : 0,
+    dependencyCount: analysis.dependencies.length
+  });
 }
 
 function getWorkspaceRoot(): vscode.WorkspaceFolder | undefined {
