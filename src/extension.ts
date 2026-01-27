@@ -178,8 +178,15 @@ async function handleGenerateErrorPrompt(): Promise<void> {
   }
 
   let snippet: string | undefined;
+  let symbolDef: string | undefined;
   if (filePath && line) {
-    snippet = await getCodeSnippetAround(filePath, line, 12);
+    // Run parallel for speed
+    const [s, d] = await Promise.all([
+      getCodeSnippetAround(filePath, line, 12),
+      resolveSymbolDefinition(filePath, line)
+    ]);
+    snippet = s;
+    symbolDef = d;
   }
 
   const language = analysis?.techStack?.includes("TypeScript") ? "TypeScript" : "JavaScript";
@@ -192,6 +199,7 @@ async function handleGenerateErrorPrompt(): Promise<void> {
     filePath,
     line,
     codeSnippet: snippet,
+    symbolDefinition: symbolDef,
     architectureSummary: analysis?.architectureSummary
   });
   let finalPrompt = prompt;
@@ -538,5 +546,84 @@ async function handleShowProviderStatus(): Promise<void> {
 
   output?.show(true);
   void vscode.window.showInformationMessage("Provider status displayed in output panel.");
+}
+
+async function resolveSymbolDefinition(filePath: string, line: number): Promise<string | undefined> {
+  try {
+    const uri = vscode.Uri.file(filePath);
+    // Open document to read line text
+    const document = await vscode.workspace.openTextDocument(uri);
+    // line is 1-based, VS Code is 0-based
+    if (line - 1 >= document.lineCount) return undefined;
+    
+    const lineText = document.lineAt(line - 1).text;
+    
+    // Simple tokenizer to find identifiers
+    const reserved = new Set([
+      "const", "let", "var", "function", "class", "import", "export", "from", 
+      "return", "if", "else", "await", "async", "try", "catch", "new", "this", 
+      "throw", "console", "log", "void", "null", "undefined", "true", "false"
+    ]);
+    
+    const regex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+    const candidates: { word: string; range: vscode.Range }[] = [];
+    let match;
+    
+    while ((match = regex.exec(lineText)) !== null) {
+      const word = match[0];
+      // Filter out reserved words and short variables (often loop counters like i, j)
+      if (!reserved.has(word) && word.length > 2) { 
+         candidates.push({ 
+           word, 
+           range: new vscode.Range(line - 1, match.index, line - 1, match.index + word.length) 
+         });
+      }
+    }
+
+    // Limit to first 3 candidates to avoid performance hit
+    const results: string[] = [];
+    for (const cand of candidates.slice(0, 3)) {
+      try {
+        const locations = await vscode.commands.executeCommand<vscode.Location[] | vscode.LocationLink[]>(
+          "vscode.executeDefinitionProvider",
+          uri,
+          cand.range.start
+        );
+        
+        if (locations && locations.length > 0) {
+          // Take the first location
+          const loc = locations[0];
+          let targetUri: vscode.Uri;
+          let targetRange: vscode.Range;
+          
+          if ("targetUri" in loc) { // LocationLink
+             targetUri = loc.targetUri;
+             targetRange = loc.targetRange;
+          } else { // Location
+             targetUri = loc.uri;
+             targetRange = loc.range;
+          }
+          
+          // Don't include if it's the same file and very close (redundant context)
+          const isSameFile = targetUri.fsPath === filePath;
+          const isClose = Math.abs(targetRange.start.line - (line - 1)) < 5;
+          if (isSameFile && isClose) continue;
+
+          // Read the definition source (5 lines of context)
+          const defSnippet = await getCodeSnippetAround(targetUri.fsPath, targetRange.start.line + 1, 5); 
+          if (defSnippet) {
+             results.push(`Definition of '${cand.word}' in ${path.basename(targetUri.fsPath)}:\n${defSnippet}`);
+          }
+        }
+      } catch {
+        // Ignore individual symbol resolution failures
+      }
+    }
+    
+    return results.length > 0 ? results.join("\n\n") : undefined;
+  } catch (err) {
+    log(`Symbol resolution failed: ${toErrorMessage(err)}`);
+    return undefined;
+  }
 }
 

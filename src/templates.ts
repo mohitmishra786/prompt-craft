@@ -6,6 +6,7 @@ export interface ErrorPromptInput {
   filePath?: string;
   line?: number;
   codeSnippet?: string;
+  symbolDefinition?: string; // New field for deep context
   architectureSummary?: string;
 }
 
@@ -23,6 +24,7 @@ export function buildErrorPrompt(input: ErrorPromptInput): string {
   const stack = input.stackTrace ? `\nStack trace:\n${input.stackTrace}` : "";
   const fileLoc = input.filePath ? `${input.filePath}${input.line ? ":" + input.line : ""}` : "unknown location";
   const snippet = input.codeSnippet ? `\nRelevant code from ${fileLoc}:\n\n${input.codeSnippet}` : "";
+  const symbolDef = input.symbolDefinition ? `\nSymbol Definition (Deep Context):\n${input.symbolDefinition}` : "";
   const arch = input.architectureSummary ? `\nArchitecture summary: ${input.architectureSummary}` : "";
 
   return [
@@ -30,6 +32,7 @@ export function buildErrorPrompt(input: ErrorPromptInput): string {
     `Error Details: ${input.errorMessage}`,
     stack.trim(),
     snippet.trim(),
+    symbolDef.trim(),
     arch.trim(),
     `Goal: Explain why this failed and propose precise code-level fixes. Provide step-by-step guidance and note any assumptions.`,
     `Constraints: Keep solutions compatible with the current dependencies and language level.`
