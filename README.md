@@ -44,6 +44,14 @@ Third, it generates and sanitizes your prompt:
 | **Secret Redaction** | Automatically identifies and masks API keys and passwords. |
 | **Provider Fallback** | Tries your preferred LLM (Groq, OpenAI, Ollama) to refine the prompt. |
 
+## Quick Start
+
+1. **Install:** Search for "Prompt Craft Pro" in the VS Code Marketplace and click Install.
+2. **Configure:** Open Settings (`Cmd+,`), search for `Prompt Craft`, and select your **Active Provider**.
+3. **Generate:**
+   - **Errors:** Click "Generate Error Prompt" in the sidebar when you hit a bug.
+   - **Analysis:** Click "Analyze Project" to generate high-level planning prompts.
+
 ## Supported Ecosystems
 
 Prompt Craft Pro is designed for modern backend and full-stack development, with expanding support for multiple languages.
