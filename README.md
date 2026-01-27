@@ -1,125 +1,81 @@
-## Prompt Craft (VS Code Extension)
+<div align="center">
 
-Prompt Craft generates concise, AI-ready prompts from your codebase. It converts diagnostics and project context into high-signal prompts designed to work well with Copilot, Cursor, and ChatGPT.
+# Prompt Craft Pro
 
-### Install
+*"Context is the bridge between a query and a solution."*
 
-- VS Code Marketplace: `mohitmishra.prompt-craft`
-  - https://marketplace.visualstudio.com/items?itemName=mohitmishra.prompt-craft
-- From file: install `prompt-craft-0.0.1.vsix` (Extensions → … → Install from VSIX)
+The Ultimate AI Prompting Companion. Generate context-aware prompts for ChatGPT, Claude, and Copilot by analyzing your code, architecture, and errors.
 
-### What it does
+[![Marketplace Version](https://img.shields.io/visual-studio-marketplace/v/mohitmishra.prompt-craft?style=flat-square&color=007acc)](https://marketplace.visualstudio.com/items?itemName=mohitmishra.prompt-craft)
+[![License](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
+[![Twitter Follow](https://img.shields.io/twitter/follow/chessMan786?style=social)](https://x.com/chessMan786)
 
-- **Error prompts**: Transforms Problems (Diagnostics) or pasted stack traces into structured prompts with Context, Error Details, Code Snippet, Goal, and Constraints.
-- **Project prompts**: Scans `package.json`, `README.md`, and up to ~100 code/text files to infer tech stack, dependencies, and architecture signals; emits domain-aware tasks.
-- **Multi-provider LLM support**: Choose from multiple AI providers:
-  - **Groq** (`llama3-8b-8192`, `llama3-70b-8192`, `mixtral-8x7b-32768`)
-  - **OpenAI** (`gpt-4`, `gpt-4-turbo`, `gpt-3.5-turbo`)
-  - **Azure OpenAI** (with API key, Azure CLI, or Managed Identity authentication)
-- **Provider management**: Easy provider switching via status bar, health checks, and configuration UI
+<p align="center">
+  <img src="https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white" />
+  <img src="https://img.shields.io/badge/VS_Code-007ACC?style=for-the-badge&logo=visual-studio-code&logoColor=white" />
+  <img src="https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white" />
+  <img src="https://img.shields.io/badge/OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white" />
+  <img src="https://img.shields.io/badge/Anthropic-D97757?style=for-the-badge&logo=anthropic&logoColor=white" />
+</p>
 
-### Commands
+</div>
 
-**Core Commands:**
-- `Prompt Craft: Analyze Project and Generate Prompts` - Analyze your project and generate AI prompts
-- `Prompt Craft: Generate Error Prompt` - Create prompts from errors or diagnostics
+---
 
-**Provider Management:**
-- `Prompt Craft: Select LLM Provider` - Choose your AI provider (Groq, OpenAI, Azure OpenAI)
-- `Prompt Craft: Test Provider Connection` - Verify provider connectivity and health
-- `Prompt Craft: Show Provider Status` - View all configured providers and their status
-- `Prompt Craft: Reload Providers from Settings` - Refresh provider configuration
+Most developers spend significant time copy-pasting code snippets, environment details, and error logs into AI tools, only to receive generic or shallow advice. The AI lacks the deep context of your project's architecture, dependencies, and symbol definitions.
 
-**Status Bar:**
-- Click the provider icon in the status bar for quick provider switching
-- Visual indicators show provider health (active/warning/error)
+This is context friction. It slows down your workflow and leads to hallucinations.
 
-### Quick start (development host)
+**Prompt Craft Pro** eliminates this friction. It automatically gathers the relevant file snippets, project heuristics, and deep symbol definitions (interfaces/classes) to build structured, high-fidelity prompts that give AI assistants exactly what they need to provide precise solutions.
 
-1) Open this folder in VS Code
-2) `npm install`
-3) `npm run compile`
-4) F5 to start the Extension Development Host
+## What It Actually Does
 
-In the Dev Host, open a workspace to analyze (e.g., `demo/ecom-backend`), then run the commands from the Command Palette.
+When you trigger Prompt Craft Pro, it performs three primary actions to bridge the context gap.
 
-### Provider Setup
+First, it runs a fast, non-intrusive analysis of your workspace. It detects your tech stack, summarizes your README, maps your Express routes, and extracts Mongoose schemas. It even generates a concise ASCII tree of your source directory to give the AI spatial awareness.
 
-#### Groq (Free Tier Available)
-1. Get API key from [groq.com](https://groq.com)
-2. Settings → `promptCraft.groqApiKey`
-3. Or set environment variable: `GROQ_API_KEY`
+Second, it captures the immediate context of your task. For errors, it identifies failing symbols and resolves their definitions across your project. For planning, it suggests tasks based on your domain (e.g., e-commerce, API, or library).
 
-#### OpenAI
-1. Get API key from [platform.openai.com](https://platform.openai.com)
-2. Settings → `promptCraft.openai.apiKey`
-3. Settings → `promptCraft.openai.model` (default: `gpt-4-turbo`)
+Third, it generates and sanitizes your prompt:
 
-#### Azure OpenAI
+| Output | Purpose |
+| :--- | :--- |
+| **Interactive Sidebar** | Preview, edit, and refine your generated prompts before copying. |
+| **Secret Redaction** | Automatically identifies and masks API keys and passwords. |
+| **Provider Fallback** | Tries your preferred LLM (Groq, OpenAI, Ollama) to refine the prompt. |
 
-**Option 1: API Key Authentication**
-1. Settings → `promptCraft.azureOpenAI.endpoint` (e.g., `https://your-resource.openai.azure.com`)
-2. Settings → `promptCraft.azureOpenAI.apiKey`
-3. Settings → `promptCraft.azureOpenAI.deploymentName`
-4. Settings → `promptCraft.azureOpenAI.authMethod` = `apiKey`
+## Quick Start
 
-**Option 2: Azure CLI Authentication (No API Key Needed)**
-1. Install [Azure CLI](https://aka.ms/azure-cli)
-2. Run `az login` in terminal
-3. Settings → `promptCraft.azureOpenAI.authMethod` = `azureCli`
-4. Configure endpoint and deployment name
+1. **Install:** Search for "Prompt Craft Pro" in the VS Code Marketplace and click Install.
+2. **Configure:** Open Settings (`Cmd+,`), search for `Prompt Craft`, and select your **Active Provider**.
+3. **Generate:**
+   - **Errors:** Click "Generate Error Prompt" in the sidebar when you hit a bug.
+   - **Analysis:** Click "Analyze Project" to generate high-level planning prompts.
 
-**Option 3: Managed Identity (Role-Based, Azure VMs)**
-1. Assign Managed Identity to your Azure VM/App Service
-2. Grant "Cognitive Services User" role
-3. Settings → `promptCraft.azureOpenAI.authMethod` = `managedIdentity`
-4. Configure endpoint and deployment name
+## Supported Ecosystems
 
-The Output shows "Generation: LLM-enhanced" when a provider is used; otherwise "Generation: Template".
+Prompt Craft Pro is designed for modern backend and full-stack development, with expanding support for multiple languages.
 
-### Demo workspace
+**Deep Integration** for JavaScript and TypeScript captures the nuances of Node.js environments, including framework-specific heuristics for Express and MongoDB.
 
-- `demo/ecom-backend`: minimal Express + MongoDB project with an intentional error in `src/app.js` and a crash route at `/boom`.
-- Try both flows:
-  - Diagnostics-based error prompt: uncomment `const broken = ;` → Problems shows an error → run Generate Error Prompt.
-  - Stack-based error prompt: run the app, hit `/boom`, copy the stack → run Generate Error Prompt and paste.
+**Broad Support** for Python, Java, and Go ensures that stack traces are parsed accurately and relevant configuration files (requirements.txt, pom.xml, go.mod) are included in the analysis.
 
-### Architecture and heuristics
+**Privacy Focused** architecture includes native support for Ollama. You can run Llama 3, Mistral, or CodeLlama locally to keep your codebase entirely on your hardware while still benefiting from AI-enhanced prompt refinement.
 
-- Tech stack detection via `package.json` (TypeScript vs JavaScript)
-- Architecture signals from folder layout (`src/`, `controllers/`, `models/`, `routes/`)
-- Domain inference (e.g., e-commerce) from README and filenames
-- Lightweight extraction of controller function exports and model/schema fields
+## Security and Trust
 
-### Security and privacy
+Security is a first-class citizen. Prompt Craft Pro includes a built-in sanitization layer that scans every generated prompt for sensitive patterns.
 
-- No hard-coded keys. Keys are stored in user/workspace settings or read from the environment.
-- No `eval` or arbitrary code execution.
-- Reads only within the open workspace.
-- When LLM is enabled, requests include a compact analysis JSON (tech stack, dependencies, README summary, architecture summary, limited controller/model summaries). Do not include sensitive content in README or code if this is a concern.
+**Automatic Masking** redacts AWS keys, OpenAI tokens, GitHub PATs, and database connection strings. This ensures you never accidentally leak credentials when pasting context into a public or shared AI chat.
 
-### Troubleshooting
+**No Data Collection.** The extension operates entirely within your local VS Code environment. Analyzed code snippets and generated prompts are never stored or sent to any telemetry backend beyond basic, anonymous event counts (which you can opt-out of).
 
-- Commands don’t appear: ensure you are in the Extension Development Host; open a workspace with a `README.md` or run the command explicitly.
-- LLM not used: set `promptCraft.groqApiKey` in the Dev Host Settings, or launch VS Code from a shell with `GROQ_API_KEY`; check for “Generation: LLM-enhanced”.
-- Snippet missing: paste a stack trace that includes a resolvable path and line.
+## Philosophy
 
-### Development
+*"Perfection is achieved, not when there is nothing more to add, but when there is nothing left to take away."* — Antoine de Saint-Exupéry
 
-- Code: TypeScript in `src/`, compiled to `out/`
-- Key files:
-  - `src/extension.ts`: activation, commands, output
-  - `src/analyzer.ts`: workspace scanning and heuristics
-  - `src/templates.ts`: templates and helper builders
-  - `src/llm.ts`: Groq wrapper and prompts
-  - `src/domain.ts`: domain inference and simple code extraction
+Prompt Craft Pro works by curation, not just collection. Instead of dumping your entire project into a prompt, it selects the essential architectural signals and specific code snippets that matter. The result is a prompt that is high-density and low-noise, respecting the context limits of your AI assistant.
 
-### Distribution
+---
 
-- Marketplace: https://marketplace.visualstudio.com/items?itemName=mohitmishra.prompt-craft
-- Local VSIX: `npx vsce package` → install the generated `.vsix`
-
-### License
-
-See `LICENSE`.
-
+MIT License
