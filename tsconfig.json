@@ -8,7 +8,7 @@
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "types": ["node", "vscode"],
+    "types": ["node", "vscode", "mocha"],
     "moduleResolution": "node",
     "resolveJsonModule": true
   },
