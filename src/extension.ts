@@ -343,7 +343,8 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
       dependencies: analysis.dependencies,
       taskIdea: idea,
       contextHeader: contextHeaderLines,
-      fileTree: analysis.fileTree
+      fileTree: analysis.fileTree,
+      securityFindings: analysis.securityFindings
     })
   );
 

@@ -31,6 +31,7 @@ export interface ProjectAnalysisResult {
   models: { file: string; fields: string[] }[];
   sampleQueries?: string[];
   fileTree?: string;
+  securityFindings?: string[];
 }
 
 async function detectTechStack(rootPath: string, pkg?: PackageJson): Promise<string> {
@@ -83,6 +84,9 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
   // Generate ASCII Tree
   const fileTree = generateAsciiTree(files, rootPath);
 
+  // Security Analysis
+  const securityFindings = await runSecurityAnalysis(files);
+
   return {
     rootPath,
     techStack,
@@ -94,7 +98,8 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
     controllers,
     models,
     sampleQueries,
-    fileTree
+    fileTree,
+    securityFindings
   };
 }
 
@@ -162,22 +167,18 @@ function truncate(s: string, max: number): string {
  */
 async function collectFiles(root: string, maxFiles: number): Promise<string[]> {
   // Broad pattern to capture code and config files
-  // Supports JS/TS ecosystem plus Python, Java, Go, and web standards
   const includePattern = new vscode.RelativePattern(
     root,
     "**/*.{js,ts,jsx,tsx,json,md,py,java,go,html,css,scss,mjs,cjs}"
   );
 
-  // Standard exclusions (node_modules, build artifacts, dotfiles)
-  // VS Code's findFiles automatically respects .gitignore if we don't pass 'useIgnoreFiles=false'
-  // But explicit excludes help reduce noise early
+  // Standard exclusions
   const excludePattern = "**/{node_modules,.git,out,dist,build,.vscode,coverage,target,bin,obj,vendor}/**";
 
   try {
     const uris = await vscode.workspace.findFiles(includePattern, excludePattern, maxFiles);
     return uris.map((u) => u.fsPath);
   } catch (err) {
-    // Fallback or empty on error (e.g. if VS Code API isn't ready in test env)
     console.error("Error finding files:", err);
     return [];
   }
@@ -278,4 +279,36 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
   }
 
   return tree.join("\n");
+}
+
+async function runSecurityAnalysis(filePaths: string[]): Promise<string[]> {
+  const findings: string[] = [];
+  const targets = filePaths.filter(f => /\.(js|ts|py|go|java)$/i.test(f)).slice(0, 20); // Limit analysis
+
+  const patterns = [
+    { name: "Hardcoded Secret", regex: /(?:key|secret|token|password|passwd|auth)\s*[:=]\s*["'][a-zA-Z0-9_\-\.]{10,}["']/i },
+    { name: "Potential SQL Injection", regex: /\.query\s*\(\s*["'][^?]*\$\{/i },
+    { name: "Insecure Eval", regex: /\beval\s*\(/i },
+    { name: "Weak Cryptography", regex: /\b(md5|sha1)\s*\(/i },
+    { name: "Command Injection", regex: /\b(exec|spawn|system)\s*\(\s*(?:`|\$\{)/i }
+  ];
+
+  for (const file of targets) {
+    try {
+      const content = await fsp.readFile(file, "utf8");
+      const lines = content.split("\n");
+      
+      lines.forEach((line, index) => {
+        patterns.forEach(p => {
+          if (p.regex.test(line)) {
+            findings.push(`${p.name} in ${path.basename(file)}:${index + 1}`);
+          }
+        });
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  return Array.from(new Set(findings)).slice(0, 10);
 }
