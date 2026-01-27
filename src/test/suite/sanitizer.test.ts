@@ -22,7 +22,7 @@ suite('Sanitizer Test Suite', () => {
 
     test('Redacts Generic Secrets', () => {
         const input = "const SECRET_KEY = 'x8s7df8s7df8s7dfsdf'";
-        const expected = "const SECRET_KEY = <REDACTED_SECRET>";
+        const expected = "const SECRET_KEY = '<REDACTED_SECRET>'";
         assert.strictEqual(sanitizePrompt(input), expected);
     });
 

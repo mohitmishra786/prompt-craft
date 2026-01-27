@@ -261,11 +261,11 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
       
       if (!seenPaths.has(pathSoFar)) {
         seenPaths.add(pathSoFar);
-        const prefix = "  ".repeat(currentLevel) + (isLastPart ? "├── " : "└── "); // Simplified prefixing
         
         // Limit depth to avoid clutter
         if (currentLevel < 4) {
-             tree.push(`${"  ".repeat(currentLevel)}├── ${part}`);
+             const connector = isLastPart ? "└── " : "├── ";
+             tree.push(`${"  ".repeat(currentLevel)}${connector}${part}`);
         }
       }
       currentLevel++;

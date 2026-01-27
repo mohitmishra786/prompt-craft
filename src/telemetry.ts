@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { sanitizePrompt } from "./sanitizer";
 
 export interface TelemetryEvent {
   name: string;
@@ -10,13 +11,14 @@ export class TelemetryService {
   private static instance: TelemetryService;
   private output: vscode.OutputChannel;
   private isEnabled: boolean = false;
+  private configChangeDisposable?: vscode.Disposable;
 
   private constructor() {
     this.output = vscode.window.createOutputChannel("Prompt Craft Telemetry");
     this.updateConfig();
     
     // Listen for config changes
-    vscode.workspace.onDidChangeConfiguration(e => {
+    this.configChangeDisposable = vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration("promptCraft.telemetry.enabled") || 
           e.affectsConfiguration("telemetry.telemetryLevel")) {
         this.updateConfig();
@@ -42,8 +44,9 @@ export class TelemetryService {
   public sendEvent(name: string, properties?: Record<string, string>, measurements?: Record<string, number>) {
     if (!this.isEnabled) return;
 
-    // Sanitize properties just in case
-    const safeProps = properties ? JSON.stringify(properties) : "{}";
+    // Sanitize properties to redact secrets
+    const jsonProps = properties ? JSON.stringify(properties) : "{}";
+    const safeProps = sanitizePrompt(jsonProps);
     
     // In a real app, this would send to Azure App Insights or PostHog
     // For now, we log to a dedicated channel for visibility
@@ -52,6 +55,8 @@ export class TelemetryService {
   }
 
   public dispose() {
+    this.configChangeDisposable?.dispose();
+    this.configChangeDisposable = undefined;
     this.output.dispose();
   }
 }

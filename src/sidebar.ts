@@ -3,7 +3,6 @@ import { sanitizePrompt } from "./sanitizer";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   _view?: vscode.WebviewView;
-  _doc?: vscode.TextDocument;
 
   constructor(private readonly _extensionUri: vscode.Uri) {}
 
@@ -41,6 +40,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
         }
       }
     });
+  }
+
+  public isReady(): boolean {
+    return !!this._view;
   }
 
   public showPrompt(title: string, content: string) {
@@ -83,6 +86,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
 				-->
 				<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src ${webview.cspSource}; script-src 'nonce-${nonce}';">
 				<meta name="viewport" content="width=device-width, initial-scale=1.0">
+				
+				<link href="${styleResetUri}" rel="stylesheet">
+				<link href="${styleVSCodeUri}" rel="stylesheet">
+				
 				<title>Prompt Craft</title>
                 <style>
                     body { padding: 10px; font-family: var(--vscode-font-family); }
@@ -153,6 +160,7 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                         });
                     });
                 </script>
+				<script nonce="${nonce}" src="${scriptUri}"></script>
 			</body>
 			</html>`;
   }

@@ -51,7 +51,8 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (err) {
         log(`Failed to generate error prompt: ${toErrorMessage(err)}`);
         void vscode.window.showErrorMessage("Prompt Craft: Failed to generate error prompt.");
-        TelemetryService.getInstance().sendEvent("ERROR_PROMPT_FAILED", { error: toErrorMessage(err) });
+        const sanitizedError = sanitizePrompt(toErrorMessage(err));
+        TelemetryService.getInstance().sendEvent("ERROR_PROMPT_FAILED", { error: sanitizedError });
       }
     }
   );
@@ -178,13 +179,14 @@ async function handleGenerateErrorPrompt(): Promise<void> {
   let line = errorInfo?.line;
   let stackTrace = errorInfo?.stack;
 
+  let useClipboard = false; // Hoist for telemetry
+
   if (!errorMessage) {
     // Enhance UX: Check clipboard for stack traces to avoid manual pasting
     const clipboardText = await vscode.env.clipboard.readText();
     const hasStackPattern = /Error:|Exception:|Traceback|at\s+[\w\.]+\s+\(|:\d+:\d+/i.test(clipboardText);
     const parsedClipboard = parseStackForFileAndLine(clipboardText, root?.uri.fsPath);
 
-    let useClipboard = false;
     if (hasStackPattern || parsedClipboard) {
       const selection = await vscode.window.showQuickPick(
         [
@@ -274,7 +276,7 @@ async function handleGenerateErrorPrompt(): Promise<void> {
   TelemetryService.getInstance().sendEvent("ERROR_PROMPT_GENERATED", {
     language,
     generationType: errorLlmUsed ? "llm" : "template",
-    hasClipboard: (!errorMessage || errorMessage.length === 0) ? "yes" : "no"
+    hasClipboard: useClipboard ? "yes" : "no"
   });
 }
 
@@ -381,19 +383,20 @@ function getWorkspaceRoot(): vscode.WorkspaceFolder | undefined {
 function showPromptToUser(title: string, text: string) {
   const sanitized = sanitizePrompt(text);
 
-  // Try to use sidebar first
-  if (sidebarProvider && sidebarProvider._view) {
+  // Always show in sidebar if it's available (it handles its own visibility/errors)
+  if (sidebarProvider) {
       sidebarProvider.showPrompt(title, sanitized);
-      // Ensure sidebar is visible
-      vscode.commands.executeCommand('promptCraft.sidebar.focus');
-  } else {
-      // Fallback to output channel if sidebar is closed/not ready
-      output?.clear();
-      output?.appendLine(`# ${title}`);
-      output?.appendLine("");
-      output?.appendLine(sanitized);
-      output?.show(true);
+      if (sidebarProvider.isReady()) {
+          vscode.commands.executeCommand('promptCraft.sidebar.focus');
+      }
   }
+
+  // Always show in output channel as backup/history
+  output?.clear();
+  output?.appendLine(`# ${title}`);
+  output?.appendLine("");
+  output?.appendLine(sanitized);
+  output?.show(true);
 
   void vscode.env.clipboard.writeText(sanitized);
   void vscode.window.showInformationMessage(
@@ -440,63 +443,58 @@ async function findErrorFromDiagnostics(): Promise<{
   return { ...best, stack: best.message };
 }
 
+interface StackPattern {
+  regex: RegExp;
+  extract: (match: RegExpMatchArray) => { path: string; line: string } | null;
+}
+
+const stackPatterns: StackPattern[] = [
+  {
+    // Windows paths: C:\\path\\to\\file.ts:10:5
+    regex: /(\(|\s)([A-Za-z]:\\\\[^\s)]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/,
+    extract: (m) => ({ path: m[2], line: m[3] })
+  },
+  {
+    // POSIX paths: /path/to/file.ts:10:5
+    regex: /(\(|\s)([\/A-Za-z0-9_.:\\-]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/,
+    extract: (m) => ({ path: m[2], line: m[3] })
+  },
+  {
+    // file URLs: file:///.../file.ts:10:5
+    regex: /file:\/\/(.+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  },
+  {
+    // Python: File "path/to/file.py", line 10
+    regex: /File "([^"]+)", line (\d+)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  },
+  {
+    // Java: at com.pkg.Cls.method(File.java:10)
+    regex: /at\s+[\w\.]+\(([^:]+\.java):(\d+)\)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  },
+  {
+    // Go: path/to/file.go:10
+    regex: /([\/A-Za-z0-9_.:\\-]+\.go):(\d+)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  }
+];
+
 function parseStackForFileAndLine(stack: string, rootPath?: string): { filePath: string; line: number } | undefined {
-  // Handles:
-  // - /path/to/file.ts:10:5
-  // - C:\\path\\to\\file.ts:10:5
-  // - file:///.../file.ts:10:5
-  // - at func (path:line:col)
-  // - Python: File "path/to/file.py", line 10
-  // - Java: at com.pkg.Cls.method(File.java:10)
-  // - Go: path/to/file.go:10
-  const regexes = [
-    /(\(|\s)([A-Za-z]:\\\\[^\s)]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/, // Windows paths
-    /(\(|\s)([\/A-Za-z0-9_.:\\-]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/, // POSIX paths
-    /file:\/\/(.+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)/, // file URLs
-    /File "([^"]+)", line (\d+)/, // Python
-    /at\s+[\w\.]+\(([^:]+\.java):(\d+)\)/, // Java (simple class file match)
-    /([\/A-Za-z0-9_.:\\-]+\.go):(\d+)/ // Go
-  ];
   const lines = stack.split(/\r?\n/);
   for (const currentLine of lines) {
-    for (const rx of regexes) {
-      const match = currentLine.match(rx);
+    for (const { regex, extract } of stackPatterns) {
+      const match = currentLine.match(regex);
       if (match) {
-        // Match groups vary by regex. We try to find the path and line.
-        // JS/TS/Go: Group 2 (path), Group 3 (line) OR Group 1 (path), Group 2 (line) depending on parenthesis
-        // Python: Group 1 (path), Group 2 (line)
-        // Java: Group 1 (file only), Group 2 (line) - Java is tricky as full path isn't always in stack trace.
-        // We prioritize explicit full path matches.
-
-        let p: string | undefined;
-        let lineGroup: string | undefined;
-
-        if (rx.source.includes("File")) { // Python
-             p = match[1];
-             lineGroup = match[2];
-        } else if (rx.source.includes(".java")) { // Java
-             // Java stack traces often only give "File.java". We might need to fuzzy find it or just return filename.
-             // For now, we return it as is, and the resolver might fail if it's not absolute.
-             // Improvement: Use workspace.findFiles to resolve simple java filenames to full paths?
-             p = match[1];
-             lineGroup = match[2];
-        } else if (rx.source.includes(".go")) { // Go
-             p = match[1];
-             lineGroup = match[2];
-        } else { // JS/TS
-             p = match[2] ?? match[1];
-             lineGroup = match[3] ?? match[2];
-        }
-
-        if (p && lineGroup) {
-             const lineNumber = parseInt(lineGroup, 10);
-             // Resolve relative paths or Java filenames against root
-             let resolved = p;
-             if (rootPath && !path.isAbsolute(p)) {
-                 // Basic resolve
-                 resolved = path.join(rootPath, p);
-             }
-             return { filePath: resolved, line: lineNumber };
+        const result = extract(match);
+        if (result && result.path && result.line) {
+          const lineNumber = parseInt(result.line, 10);
+          let resolved = result.path;
+          if (rootPath && !path.isAbsolute(resolved)) {
+            resolved = path.join(rootPath, resolved);
+          }
+          return { filePath: resolved, line: lineNumber };
         }
       }
     }
