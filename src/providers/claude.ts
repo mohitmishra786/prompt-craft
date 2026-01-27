@@ -67,17 +67,21 @@ export class ClaudeProvider extends LLMProvider {
     ];
   }
 
+  private buildRequestPayload(request: LLMRequest) {
+    return {
+      model: request.model || this.defaultModel,
+      system: request.system,
+      messages: [
+        { role: 'user', content: request.user }
+      ],
+      max_tokens: request.maxTokens ?? 1000,
+      temperature: request.temperature ?? 0.3
+    };
+  }
+
   async completeJSON(request: LLMRequest): Promise<string> {
     try {
-      const response = await this.http.post('/messages', {
-        model: request.model || this.defaultModel,
-        system: request.system,
-        messages: [
-          { role: 'user', content: request.user }
-        ],
-        max_tokens: request.maxTokens ?? 1000,
-        temperature: request.temperature ?? 0.3
-      });
+      const response = await this.http.post('/messages', this.buildRequestPayload(request));
 
       const content = response.data?.content?.[0]?.text;
       if (!content) {
@@ -86,21 +90,13 @@ export class ClaudeProvider extends LLMProvider {
 
       return content;
     } catch (error) {
-      this.handleAxiosError(error);
+      return this.handleAxiosError(error);
     }
   }
 
   async complete(request: LLMRequest): Promise<LLMResponse> {
     try {
-      const response = await this.http.post('/messages', {
-        model: request.model || this.defaultModel,
-        system: request.system,
-        messages: [
-          { role: 'user', content: request.user }
-        ],
-        max_tokens: request.maxTokens ?? 1000,
-        temperature: request.temperature ?? 0.3
-      });
+      const response = await this.http.post('/messages', this.buildRequestPayload(request));
 
       const data = response.data;
       const text = data?.content?.[0]?.text;
@@ -120,7 +116,7 @@ export class ClaudeProvider extends LLMProvider {
         finishReason: data.stop_reason
       };
     } catch (error) {
-      this.handleAxiosError(error);
+      return this.handleAxiosError(error);
     }
   }
 
@@ -148,9 +144,9 @@ export class ClaudeProvider extends LLMProvider {
 
   getCapabilities(): ProviderCapabilities {
     return {
-      streaming: true,
-      functionCalling: true,
-      vision: true,
+      streaming: false,
+      functionCalling: false,
+      vision: false,
       embeddings: false
     };
   }

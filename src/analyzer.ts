@@ -298,6 +298,9 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
 }
 
 async function runSecurityAnalysis(filePaths: string[]): Promise<string[]> {
+  // Heuristic-based security pattern detection.
+  // These patterns may produce false positives and are intended to
+  // surface areas for manual review, not definitive vulnerability detection.
   const findings: string[] = [];
   const targets = filePaths.filter(f => /\.(js|ts|py|go|java)$/i.test(f)).slice(0, 20);
 

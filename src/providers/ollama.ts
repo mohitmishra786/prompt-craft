@@ -14,17 +14,18 @@ export interface OllamaProviderConfig extends ProviderConfig {
 export class OllamaProvider extends LLMProvider {
   private http: AxiosInstance;
   private defaultModel: string;
+  private baseUrl: string;
 
   constructor(config: OllamaProviderConfig) {
     super(config);
     this.defaultModel = config.model || 'llama3';
+    this.baseUrl = config.baseUrl || 'http://localhost:11434/api';
     
     // Validate configuration
     this.validateConfig();
 
-    const baseURL = config.baseUrl || 'http://localhost:11434/api';
     this.http = axios.create({
-      baseURL,
+      baseURL: this.baseUrl,
       timeout: config.timeout || 60000, // Local models can be slow
       headers: {
         'Content-Type': 'application/json'
@@ -67,18 +68,22 @@ export class OllamaProvider extends LLMProvider {
     ];
   }
 
+  private buildRequestPayload(request: LLMRequest) {
+    return {
+      model: request.model || this.defaultModel,
+      prompt: `${request.system}\n\nUser: ${request.user}\n\nAssistant:`,
+      system: request.system,
+      stream: false,
+      options: {
+        temperature: request.temperature ?? 0.3,
+        num_predict: request.maxTokens ?? 1000
+      }
+    };
+  }
+
   async completeJSON(request: LLMRequest): Promise<string> {
     try {
-      const response = await this.http.post('/generate', {
-        model: request.model || this.defaultModel,
-        prompt: `${request.system}\n\nUser: ${request.user}\n\nAssistant:`,
-        system: request.system,
-        stream: false,
-        options: {
-          temperature: request.temperature ?? 0.3,
-          num_predict: request.maxTokens ?? 1000
-        }
-      });
+      const response = await this.http.post('/generate', this.buildRequestPayload(request));
 
       const content = response.data?.response;
       if (!content) {
@@ -87,22 +92,13 @@ export class OllamaProvider extends LLMProvider {
 
       return content;
     } catch (error) {
-      this.handleAxiosError(error);
+      return this.handleAxiosError(error);
     }
   }
 
   async complete(request: LLMRequest): Promise<LLMResponse> {
     try {
-      const response = await this.http.post('/generate', {
-        model: request.model || this.defaultModel,
-        prompt: `${request.system}\n\nUser: ${request.user}\n\nAssistant:`,
-        system: request.system,
-        stream: false,
-        options: {
-          temperature: request.temperature ?? 0.3,
-          num_predict: request.maxTokens ?? 1000
-        }
-      });
+      const response = await this.http.post('/generate', this.buildRequestPayload(request));
 
       const data = response.data;
       
@@ -116,7 +112,7 @@ export class OllamaProvider extends LLMProvider {
         finishReason: 'stop'
       };
     } catch (error) {
-      this.handleAxiosError(error);
+      return this.handleAxiosError(error);
     }
   }
 
@@ -128,7 +124,7 @@ export class OllamaProvider extends LLMProvider {
       } else if (error.code === 'ECONNABORTED') {
         this.handleError(new Error('Request timeout - local model might be slow or starting up'), 'Timeout');
       } else if (error.code === 'ECONNREFUSED') {
-        this.handleError(new Error('Connection refused - is Ollama running on localhost:11434?'), 'Network');
+        this.handleError(new Error(`Connection refused - is Ollama running on ${this.baseUrl}?`), 'Network');
       } else {
         this.handleError(new Error('Network error'), 'Network');
       }
@@ -153,7 +149,7 @@ export function buildOllamaProviderFromSettings(
   baseUrl: string | undefined,
   model: string | undefined,
   timeout: number | undefined
-): OllamaProvider | undefined {
+): OllamaProvider {
   const config = {
     name: 'Ollama',
     enabled: true,

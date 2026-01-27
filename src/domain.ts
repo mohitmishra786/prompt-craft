@@ -115,7 +115,7 @@ export async function extractMongooseModelFields(files: string[], root: string):
 }
 
 export async function extractExpressRoutes(files: string[], root: string): Promise<RouteInfo[]> {
-  const routeFiles = files.filter((f) => /\broutes\b|app\.(js|ts)|server\.(js|ts)/i.test(f));
+  const routeFiles = files.filter((f) => /\broutes?\b|\brouter\b|app\.(js|ts)|server\.(js|ts)|api\.(js|ts)/i.test(f));
   const results: RouteInfo[] = [];
 
   for (const file of routeFiles) {

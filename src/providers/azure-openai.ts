@@ -10,9 +10,7 @@ import axios, { AxiosInstance } from 'axios';
 import { LLMProvider, LLMRequest, LLMResponse, ProviderType, ProviderConfig, ProviderCapabilities } from './base';
 import { 
   AzureCliCredential, 
-  ManagedIdentityCredential, 
-  DefaultAzureCredential,
-  TokenCredential
+  ManagedIdentityCredential
 } from '@azure/identity';
 
 export type AzureAuthMethod = 'apiKey' | 'azureCli' | 'managedIdentity';
@@ -28,11 +26,6 @@ export interface AzureOpenAIProviderConfig extends ProviderConfig {
   managedIdentityClientId?: string;
 }
 
-interface AzureToken {
-  accessToken: string;
-  expiresOn: Date;
-}
-
 export class AzureOpenAIProvider extends LLMProvider {
   private http: AxiosInstance;
   private endpoint: string;
@@ -40,10 +33,11 @@ export class AzureOpenAIProvider extends LLMProvider {
   private deploymentName: string;
   private apiVersion: string;
   private authMethod: AzureAuthMethod;
-  private cachedToken: AzureToken | null = null;
   private subscriptionId?: string;
   private tenantId?: string;
   private managedIdentityClientId?: string;
+  private azureCliCredential?: AzureCliCredential;
+  private managedIdentityCredential?: ManagedIdentityCredential;
 
   constructor(config: AzureOpenAIProviderConfig) {
     super(config);
@@ -151,8 +145,10 @@ export class AzureOpenAIProvider extends LLMProvider {
    */
   private async getAzureCliToken(): Promise<string> {
     try {
-      const credential = new AzureCliCredential();
-      const token = await credential.getToken("https://cognitiveservices.azure.com/.default");
+      if (!this.azureCliCredential) {
+        this.azureCliCredential = new AzureCliCredential();
+      }
+      const token = await this.azureCliCredential.getToken("https://cognitiveservices.azure.com/.default");
       return token.token;
     } catch (error) {
       throw new Error(`Azure CLI authentication failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -164,9 +160,11 @@ export class AzureOpenAIProvider extends LLMProvider {
    */
   private async getManagedIdentityToken(): Promise<string> {
     try {
-      const options = this.managedIdentityClientId ? { clientId: this.managedIdentityClientId } : undefined;
-      const credential = new ManagedIdentityCredential(options);
-      const token = await credential.getToken("https://cognitiveservices.azure.com/.default");
+      if (!this.managedIdentityCredential) {
+        const options = this.managedIdentityClientId ? { clientId: this.managedIdentityClientId } : undefined;
+        this.managedIdentityCredential = new ManagedIdentityCredential(options);
+      }
+      const token = await this.managedIdentityCredential.getToken("https://cognitiveservices.azure.com/.default");
       return token.token;
     } catch (error) {
       throw new Error(`Managed Identity authentication failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -313,15 +311,15 @@ export class AzureOpenAIProvider extends LLMProvider {
       case 'azureCli':
         return {
           method: 'azureCli',
-          isAuthenticated: true, // Attempted at runtime
-          message: 'Using Azure CLI authentication'
+          isAuthenticated: true, 
+          message: 'Azure CLI authentication (not verified until first request)'
         };
       
       case 'managedIdentity':
         return {
           method: 'managedIdentity',
-          isAuthenticated: true, // Attempted at runtime
-          message: 'Using Managed Identity authentication'
+          isAuthenticated: true, 
+          message: 'Managed Identity authentication (not verified until first request)'
         };
       
       default:
@@ -334,10 +332,11 @@ export class AzureOpenAIProvider extends LLMProvider {
   }
 
   /**
-   * Clear cached token (useful for testing or forcing refresh)
+   * Clear cached credentials to force a refresh
    */
   clearTokenCache(): void {
-    this.cachedToken = null;
+    this.azureCliCredential = undefined;
+    this.managedIdentityCredential = undefined;
   }
 }
 
