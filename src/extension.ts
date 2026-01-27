@@ -162,19 +162,52 @@ async function handleGenerateErrorPrompt(): Promise<void> {
   let stackTrace = errorInfo?.stack;
 
   if (!errorMessage) {
-    const pasted = await vscode.window.showInputBox({
-      prompt: "Paste error output (stack trace)",
-      ignoreFocusOut: true
-    });
-    if (!pasted) {
-      void vscode.window.showInformationMessage("No error provided.");
-      return;
+    // Enhance UX: Check clipboard for stack traces to avoid manual pasting
+    const clipboardText = await vscode.env.clipboard.readText();
+    const hasStackPattern = /Error:|Exception:|Traceback|at\s+[\w\.]+\s+\(|:\d+:\d+/i.test(clipboardText);
+    const parsedClipboard = parseStackForFileAndLine(clipboardText, root?.uri.fsPath);
+
+    let useClipboard = false;
+    if (hasStackPattern || parsedClipboard) {
+      const selection = await vscode.window.showQuickPick(
+        [
+          { 
+            label: "$(clippy) Use Clipboard Content", 
+            description: "Detected potential error/stack trace", 
+            detail: clipboardText.trim().slice(0, 120) + (clipboardText.length > 120 ? "..." : "") 
+          },
+          { 
+            label: "$(edit) Paste Manually", 
+            description: "Ignore clipboard and paste different error" 
+          }
+        ],
+        { placeHolder: "Error details detected in clipboard. Use them?" }
+      );
+
+      if (selection?.label.includes("Use Clipboard")) {
+        errorMessage = clipboardText.split("\n")[0]?.slice(0, 500) ?? clipboardText;
+        stackTrace = clipboardText;
+        filePath = parsedClipboard?.filePath;
+        line = parsedClipboard?.line;
+        useClipboard = true;
+      }
     }
-    errorMessage = pasted.split("\n")[0]?.slice(0, 500) ?? pasted;
-    stackTrace = pasted;
-    const parsed = parseStackForFileAndLine(pasted, root?.uri.fsPath);
-    filePath = parsed?.filePath;
-    line = parsed?.line;
+
+    if (!useClipboard) {
+      const pasted = await vscode.window.showInputBox({
+        prompt: "Paste error output (stack trace)",
+        ignoreFocusOut: true
+      });
+      if (!pasted) {
+        void vscode.window.showInformationMessage("No error provided.");
+        return;
+      }
+      errorMessage = pasted.split("\n")[0]?.slice(0, 500) ?? pasted;
+      stackTrace = pasted;
+      const parsed = parseStackForFileAndLine(pasted, root?.uri.fsPath);
+      filePath = parsed?.filePath;
+      line = parsed?.line;
+    }
   }
 
   let snippet: string | undefined;
