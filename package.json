@@ -291,6 +291,6 @@
   },
   "dependencies": {
     "@azure/identity": "^4.13.0",
-    "axios": "^1.7.2"
+    "axios": "^1.12.0"
   }
 }
