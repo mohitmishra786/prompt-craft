@@ -19,7 +19,7 @@ export class ClaudeProvider extends LLMProvider {
   constructor(config: ClaudeProviderConfig) {
     super(config);
     this.apiKey = config.apiKey || '';
-    this.defaultModel = config.model || 'claude-3-sonnet-20240229';
+    this.defaultModel = config.model || 'claude-sonnet-4-5';
     
     // Validate configuration
     this.validateConfig();
@@ -59,11 +59,12 @@ export class ClaudeProvider extends LLMProvider {
 
   getAvailableModels(): string[] {
     return [
-      'claude-3-opus-20240229',
-      'claude-3-sonnet-20240229',
-      'claude-3-haiku-20240307',
-      'claude-2.1',
-      'claude-2.0'
+      'claude-sonnet-4-5',
+      'claude-haiku-4-5',
+      'claude-opus-4-5',
+      'claude-3-7-sonnet-latest',
+      'claude-3-5-sonnet-latest',
+      'claude-3-haiku-20240307'
     ];
   }
 

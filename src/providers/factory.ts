@@ -137,13 +137,15 @@ export class ProviderFactory {
     
     // Initialize Groq provider (existing)
     const groqApiKey = config.get<string>('groqApiKey');
+    const groqModel = config.get<string>('groq.model') || 'llama-3.1-8b-instant';
     const groqTimeout = config.get<number>('requestTimeoutMs') || 5000;
     if (groqApiKey && groqApiKey.trim().length > 0) {
       const groqConfig = {
         name: 'Groq',
         enabled: true,
         timeout: groqTimeout,
-        apiKey: groqApiKey
+        apiKey: groqApiKey,
+        model: groqModel
       };
       const groqProvider = new GroqProvider(groqConfig);
       this.registry.register(groqProvider);

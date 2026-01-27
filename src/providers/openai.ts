@@ -20,7 +20,7 @@ export class OpenAIProvider extends LLMProvider {
   constructor(config: OpenAIProviderConfig) {
     super(config);
     this.apiKey = config.apiKey || (process.env.OPENAI_API_KEY as string) || '';
-    this.defaultModel = (config as any).model || 'gpt-4-turbo';
+    this.defaultModel = (config as any).model || 'gpt-5.2';
     
     // Validate configuration
     this.validateConfig();
@@ -67,14 +67,14 @@ export class OpenAIProvider extends LLMProvider {
 
   getAvailableModels(): string[] {
     return [
-      'gpt-4',
+      'gpt-5.2',
+      'gpt-5-mini',
+      'gpt-5-nano',
+      'gpt-4.1',
+      'gpt-4o',
+      'gpt-4o-mini',
       'gpt-4-turbo',
-      'gpt-4-turbo-preview',
-      'gpt-4-0125-preview',
-      'gpt-4-1106-preview',
-      'gpt-3.5-turbo',
-      'gpt-3.5-turbo-0125',
-      'gpt-3.5-turbo-1106'
+      'gpt-3.5-turbo'
     ];
   }
 
@@ -192,15 +192,17 @@ export class OpenAIProvider extends LLMProvider {
    * Estimate cost in USD
    */
   estimateCost(promptTokens: number, completionTokens: number): number {
-    // Pricing as of 2024 (per 1M tokens)
+    // Pricing as of 2026 (per 1M tokens)
     const pricing: Record<string, { input: number; output: number }> = {
-      'gpt-4': { input: 30.00, output: 60.00 },
+      'gpt-5.2': { input: 15.00, output: 45.00 },
+      'gpt-5-mini': { input: 0.15, output: 0.60 },
+      'gpt-4.1': { input: 5.00, output: 15.00 },
+      'gpt-4o': { input: 5.00, output: 15.00 },
       'gpt-4-turbo': { input: 10.00, output: 30.00 },
-      'gpt-4-turbo-preview': { input: 10.00, output: 30.00 },
       'gpt-3.5-turbo': { input: 0.50, output: 1.50 }
     };
 
-    const modelPricing = pricing[this.defaultModel] || pricing['gpt-4-turbo'];
+    const modelPricing = pricing[this.defaultModel] || pricing['gpt-5.2'];
     const inputCost = (promptTokens / 1000000) * modelPricing.input;
     const outputCost = (completionTokens / 1000000) * modelPricing.output;
 
@@ -227,7 +229,7 @@ export function buildOpenAIProviderFromSettings(
     enabled: true,
     timeout: Math.max(1000, Math.min(60000, timeout ?? 30000)),
     apiKey: effectiveApiKey.trim(),
-    model: model || 'gpt-4-turbo'
+    model: model || 'gpt-5.2'
   };
 
   return new OpenAIProvider(config);

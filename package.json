@@ -96,6 +96,21 @@
           "markdownDescription": "Groq API key for LLM-enhanced prompt generation. Get a key from [groq.com](https://groq.com). Leave blank to use template-based generation.",
           "scope": "application"
         },
+        "promptCraft.groq.model": {
+          "type": "string",
+          "default": "llama-3.1-8b-instant",
+          "enum": [
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
+            "llama-4-maverick-17b-128e-instruct",
+            "llama-4-scout-17b-16e-instruct",
+            "openai/gpt-oss-120b",
+            "openai/gpt-oss-20b",
+            "mixtral-8x7b-32768"
+          ],
+          "description": "Groq model to use (e.g. llama-3.1-8b-instant, llama-3.3-70b-versatile)",
+          "scope": "application"
+        },
         "promptCraft.requestTimeoutMs": {
           "type": "number",
           "default": 5000,
@@ -113,11 +128,16 @@
         "promptCraft.openai.model": {
           "type": "string",
           "enum": [
-            "gpt-4",
+            "gpt-5.2",
+            "gpt-5-mini",
+            "gpt-5-nano",
+            "gpt-4.1",
+            "gpt-4o",
+            "gpt-4o-mini",
             "gpt-4-turbo",
             "gpt-3.5-turbo"
           ],
-          "default": "gpt-4-turbo",
+          "default": "gpt-5.2",
           "description": "OpenAI model to use",
           "scope": "application"
         },
@@ -206,13 +226,14 @@
         },
         "promptCraft.claude.model": {
           "type": "string",
-          "default": "claude-3-sonnet-20240229",
+          "default": "claude-sonnet-4-5",
           "enum": [
-            "claude-3-opus-20240229",
-            "claude-3-sonnet-20240229",
-            "claude-3-haiku-20240307",
-            "claude-2.1",
-            "claude-2.0"
+            "claude-sonnet-4-5",
+            "claude-haiku-4-5",
+            "claude-opus-4-5",
+            "claude-3-7-sonnet-latest",
+            "claude-3-5-sonnet-latest",
+            "claude-3-haiku-20240307"
           ],
           "description": "Anthropic Claude model to use",
           "scope": "application"
