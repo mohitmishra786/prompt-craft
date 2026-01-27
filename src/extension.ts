@@ -334,7 +334,8 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
     `Dependencies: ${analysis.dependencies.slice(0, 25).join(", ")}`,
     analysis.domain.domain !== "unknown" ? `Domain: ${analysis.domain.domain} (${analysis.domain.domainHints.join(", ")})` : undefined,
     analysis.controllers.length ? `Controllers: ${analysis.controllers.map((c) => `${c.file} [${c.functions.slice(0,3).join(" ")}]`).join(", ")}` : undefined,
-    analysis.models.length ? `Models: ${analysis.models.map((m) => `${m.file} [${m.fields.slice(0,5).join(" ")}]`).join(", ")}` : undefined
+    analysis.models.length ? `Models: ${analysis.models.map((m) => `${m.file} [${m.fields.slice(0,5).join(" ")}]`).join(", ")}` : undefined,
+    analysis.routes.length ? `Routes: ${analysis.routes.map((r) => `${r.file} [${r.endpoints.slice(0,3).join(" ")}]`).join(", ")}` : undefined
   ].filter(Boolean).join("\n");
 
   let prompts = ideas.map((idea) =>

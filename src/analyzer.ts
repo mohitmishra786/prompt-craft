@@ -2,7 +2,13 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
-import { extractControllerFunctions, extractMongooseModelFields, inferDomain, InferredDomain } from "./domain";
+import { 
+  extractControllerFunctions, 
+  extractMongooseModelFields, 
+  extractExpressRoutes,
+  inferDomain, 
+  InferredDomain 
+} from "./domain";
 
 export interface PackageJson {
   name?: string;
@@ -29,6 +35,7 @@ export interface ProjectAnalysisResult {
   domain: InferredDomain;
   controllers: { file: string; functions: string[] }[];
   models: { file: string; fields: string[] }[];
+  routes: { file: string; endpoints: string[] }[];
   sampleQueries?: string[];
   fileTree?: string;
   securityFindings?: string[];
@@ -79,6 +86,7 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
   const domain = await inferDomain(readmeSummary, files, rootPath);
   const controllers = await extractControllerFunctions(files, rootPath);
   const models = await extractMongooseModelFields(files, rootPath);
+  const routes = await extractExpressRoutes(files, rootPath);
   const sampleQueries = await extractSampleQueries(files);
 
   // Generate ASCII Tree
@@ -97,6 +105,7 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
     domain,
     controllers,
     models,
+    routes,
     sampleQueries,
     fileTree,
     securityFindings
