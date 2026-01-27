@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
@@ -126,40 +127,31 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 3) + "...";
 }
 
+/**
+ * Replaces recursive fs walk with VS Code's native fast file search.
+ * This respects .gitignore and performs significantly better on large repos.
+ */
 async function collectFiles(root: string, maxFiles: number): Promise<string[]> {
-  const results: string[] = [];
-  const ignored = new Set([
-    "node_modules",
-    ".git",
-    "out",
-    "dist",
-    ".vscode"
-  ]);
+  // Broad pattern to capture code and config files
+  // Supports JS/TS ecosystem plus Python, Java, Go, and web standards
+  const includePattern = new vscode.RelativePattern(
+    root,
+    "**/*.{js,ts,jsx,tsx,json,md,py,java,go,html,css,scss,mjs,cjs}"
+  );
 
-  async function walk(dir: string): Promise<void> {
-    if (results.length >= maxFiles) return;
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = await fsp.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (results.length >= maxFiles) break;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (ignored.has(entry.name)) continue;
-        await walk(full);
-      } else {
-        // Only include common text/code files to keep analysis fast
-        if (!/\.(md|js|ts|jsx|tsx|json|mjs|cjs)$/i.test(full)) continue;
-        results.push(full);
-      }
-    }
+  // Standard exclusions (node_modules, build artifacts, dotfiles)
+  // VS Code's findFiles automatically respects .gitignore if we don't pass 'useIgnoreFiles=false'
+  // But explicit excludes help reduce noise early
+  const excludePattern = "**/{node_modules,.git,out,dist,build,.vscode,coverage,target,bin,obj,vendor}/**";
+
+  try {
+    const uris = await vscode.workspace.findFiles(includePattern, excludePattern, maxFiles);
+    return uris.map((u) => u.fsPath);
+  } catch (err) {
+    // Fallback or empty on error (e.g. if VS Code API isn't ready in test env)
+    console.error("Error finding files:", err);
+    return [];
   }
-
-  await walk(root);
-  return results;
 }
 
 function detectArchitecture(files: string[], root: string): string {
@@ -224,4 +216,5 @@ async function extractSampleQueries(files: string[]): Promise<string[]> {
   }
   return queries;
 }
+
 
