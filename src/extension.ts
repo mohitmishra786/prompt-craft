@@ -4,6 +4,7 @@ import { analyzeProject, getCodeSnippetAround } from "./analyzer";
 import { buildErrorPrompt, buildProjectPrompt, defaultProjectTaskIdeas, ecommerceTaskIdeas, buildLLMUserProjectMessage, buildLLMUserErrorMessage } from "./templates";
 import { buildGroqClientFromSettings, buildErrorSystemPrompt, buildProjectSystemPrompt } from "./llm";
 import { ProviderFactory, ProviderRegistry } from "./providers/factory";
+import { sanitizePrompt } from "./sanitizer";
 
 let output: vscode.OutputChannel | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -346,18 +347,20 @@ function getWorkspaceRoot(): vscode.WorkspaceFolder | undefined {
 }
 
 function showPromptToUser(title: string, text: string) {
+  const sanitized = sanitizePrompt(text);
+
   output?.clear();
   output?.appendLine(`# ${title}`);
   output?.appendLine("");
-  output?.appendLine(text);
+  output?.appendLine(sanitized);
   output?.show(true);
 
-  void vscode.env.clipboard.writeText(text);
+  void vscode.env.clipboard.writeText(sanitized);
   void vscode.window.showInformationMessage(
     `${title} generated and copied to clipboard.`,
     "Copy again"
   ).then((action) => {
-    if (action === "Copy again") void vscode.env.clipboard.writeText(text);
+    if (action === "Copy again") void vscode.env.clipboard.writeText(sanitized);
   });
 }
 
