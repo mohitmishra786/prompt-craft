@@ -30,6 +30,24 @@
     "url": "https://github.com/mohitmishra786/prompt-craft/issues"
   },
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "prompt-craft-sidebar",
+          "title": "Prompt Craft",
+          "icon": "prompt-craft.png"
+        }
+      ]
+    },
+    "views": {
+      "prompt-craft-sidebar": [
+        {
+          "type": "webview",
+          "id": "promptCraft.sidebar",
+          "name": "Prompt Assistant"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "prompt-craft.generateErrorPrompt",

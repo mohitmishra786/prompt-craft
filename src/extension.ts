@@ -6,12 +6,23 @@ import { buildGroqClientFromSettings, buildErrorSystemPrompt, buildProjectSystem
 import { ProviderFactory, ProviderRegistry } from "./providers/factory";
 import { sanitizePrompt } from "./sanitizer";
 import { TelemetryService } from "./telemetry";
+import { SidebarProvider } from "./sidebar";
 
 let output: vscode.OutputChannel | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
+let sidebarProvider: SidebarProvider | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   output = vscode.window.createOutputChannel("Prompt Craft");
+
+  // Register Sidebar
+  sidebarProvider = new SidebarProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      "promptCraft.sidebar",
+      sidebarProvider
+    )
+  );
 
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -370,11 +381,19 @@ function getWorkspaceRoot(): vscode.WorkspaceFolder | undefined {
 function showPromptToUser(title: string, text: string) {
   const sanitized = sanitizePrompt(text);
 
-  output?.clear();
-  output?.appendLine(`# ${title}`);
-  output?.appendLine("");
-  output?.appendLine(sanitized);
-  output?.show(true);
+  // Try to use sidebar first
+  if (sidebarProvider && sidebarProvider._view) {
+      sidebarProvider.showPrompt(title, sanitized);
+      // Ensure sidebar is visible
+      vscode.commands.executeCommand('promptCraft.sidebar.focus');
+  } else {
+      // Fallback to output channel if sidebar is closed/not ready
+      output?.clear();
+      output?.appendLine(`# ${title}`);
+      output?.appendLine("");
+      output?.appendLine(sanitized);
+      output?.show(true);
+  }
 
   void vscode.env.clipboard.writeText(sanitized);
   void vscode.window.showInformationMessage(
