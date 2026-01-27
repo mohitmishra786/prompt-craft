@@ -41,8 +41,15 @@ export interface ProjectAnalysisResult {
   securityFindings?: string[];
 }
 
+interface AnalysisCache {
+  result: ProjectAnalysisResult;
+  timestamp: number;
+}
+
+let projectAnalysisCache: AnalysisCache | null = null;
+const CACHE_TTL_MS = 30000; // 30 seconds
+
 async function detectTechStack(rootPath: string, pkg?: PackageJson): Promise<string> {
-  // Check for other languages first
   const exists = async (f: string) => {
     try {
       await fsp.stat(path.join(rootPath, f));
@@ -65,13 +72,19 @@ async function detectTechStack(rootPath: string, pkg?: PackageJson): Promise<str
     return "Rust";
   }
 
-  // Fallback to JS/Node
   if (!pkg) return "JavaScript/Node.js";
   const hasTS = pkg.devDependencies?.["typescript"] || pkg.dependencies?.["typescript"];
   return hasTS ? "TypeScript/Node.js" : "JavaScript/Node.js";
 }
 
 export async function analyzeProject(rootPath: string, maxFiles: number = 100): Promise<ProjectAnalysisResult> {
+  // Check cache
+  if (projectAnalysisCache && (Date.now() - projectAnalysisCache.timestamp < CACHE_TTL_MS)) {
+    if (projectAnalysisCache.result.rootPath === rootPath) {
+      return projectAnalysisCache.result;
+    }
+  }
+
   const packageJsonPath = path.join(rootPath, "package.json");
   const readmePath = path.join(rootPath, "README.md");
 
@@ -89,13 +102,10 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
   const routes = await extractExpressRoutes(files, rootPath);
   const sampleQueries = await extractSampleQueries(files);
 
-  // Generate ASCII Tree
   const fileTree = generateAsciiTree(files, rootPath);
-
-  // Security Analysis
   const securityFindings = await runSecurityAnalysis(files);
 
-  return {
+  const result = {
     rootPath,
     techStack,
     dependencies,
@@ -110,6 +120,14 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
     fileTree,
     securityFindings
   };
+
+  // Update cache
+  projectAnalysisCache = {
+    result,
+    timestamp: Date.now()
+  };
+
+  return result;
 }
 
 export async function getCodeSnippetAround(
@@ -170,18 +188,11 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 3) + "...";
 }
 
-/**
- * Replaces recursive fs walk with VS Code's native fast file search.
- * This respects .gitignore and performs significantly better on large repos.
- */
 async function collectFiles(root: string, maxFiles: number): Promise<string[]> {
-  // Broad pattern to capture code and config files
   const includePattern = new vscode.RelativePattern(
     root,
     "**/*.{js,ts,jsx,tsx,json,md,py,java,go,html,css,scss,mjs,cjs}"
   );
-
-  // Standard exclusions
   const excludePattern = "**/{node_modules,.git,out,dist,build,.vscode,coverage,target,bin,obj,vendor}/**";
 
   try {
@@ -227,7 +238,6 @@ function detectHints(dependencies: string[], files: string[]) {
   return { usesExpress, usesReact, usesMongo, hasAuthHints, hasTests };
 }
 
-// Lightweight extraction of simple Mongo queries from code for richer context
 async function extractSampleQueries(files: string[]): Promise<string[]> {
   const queries: string[] = [];
   const targets = files.filter((f) => /\.(js|ts)$/i.test(f));
@@ -271,8 +281,6 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
       
       if (!seenPaths.has(pathSoFar)) {
         seenPaths.add(pathSoFar);
-        
-        // Limit depth to avoid clutter
         if (currentLevel < 4) {
              const connector = isLastPart ? "└── " : "├── ";
              tree.push(`${"  ".repeat(currentLevel)}${connector}${part}`);
@@ -282,7 +290,6 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
     });
   });
 
-  // Limit total tree lines to 20 to preserve prompt space
   if (tree.length > 20) {
       return tree.slice(0, 20).join("\n") + "\n  ... (truncated)";
   }
@@ -292,7 +299,7 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
 
 async function runSecurityAnalysis(filePaths: string[]): Promise<string[]> {
   const findings: string[] = [];
-  const targets = filePaths.filter(f => /\.(js|ts|py|go|java)$/i.test(f)).slice(0, 20); // Limit analysis
+  const targets = filePaths.filter(f => /\.(js|ts|py|go|java)$/i.test(f)).slice(0, 20);
 
   const patterns = [
     { name: "Hardcoded Secret", regex: /(?:key|secret|token|password|passwd|auth)\s*[:=]\s*["'][a-zA-Z0-9_\-\.]{10,}["']/i },
@@ -306,7 +313,6 @@ async function runSecurityAnalysis(filePaths: string[]): Promise<string[]> {
     try {
       const content = await fsp.readFile(file, "utf8");
       const lines = content.split("\n");
-      
       lines.forEach((line, index) => {
         patterns.forEach(p => {
           if (p.regex.test(line)) {
