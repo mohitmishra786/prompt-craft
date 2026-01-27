@@ -89,6 +89,23 @@ export class ProviderRegistry {
   }
 
   /**
+   * Get a chain of providers for fallback, starting with the active one
+   */
+  getFallbackChain(): LLMProvider[] {
+    const chain: LLMProvider[] = [];
+    const active = this.getActive();
+    if (active) {
+      chain.push(active);
+    }
+
+    // Add other configured providers
+    const others = this.getConfigured().filter(p => !active || p.getType() !== active.getType());
+    chain.push(...others);
+
+    return chain;
+  }
+
+  /**
    * Get active provider type
    */
   getActiveType(): ProviderType | null {
