@@ -197,6 +197,33 @@
           "scope": "application",
           "minimum": 1000,
           "maximum": 300000
+        },
+        "promptCraft.claude.apiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Anthropic Claude API key. Get a key from [console.anthropic.com](https://console.anthropic.com).",
+          "scope": "application"
+        },
+        "promptCraft.claude.model": {
+          "type": "string",
+          "default": "claude-3-sonnet-20240229",
+          "enum": [
+            "claude-3-opus-20240229",
+            "claude-3-sonnet-20240229",
+            "claude-3-haiku-20240307",
+            "claude-2.1",
+            "claude-2.0"
+          ],
+          "description": "Anthropic Claude model to use",
+          "scope": "application"
+        },
+        "promptCraft.claude.timeout": {
+          "type": "number",
+          "default": 30000,
+          "description": "Timeout for Claude API requests in milliseconds.",
+          "scope": "application",
+          "minimum": 1000,
+          "maximum": 60000
         }
       }
     }

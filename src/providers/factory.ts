@@ -9,6 +9,7 @@ import { GroqProvider } from './groq';
 import { OpenAIProvider } from './openai';
 import { AzureOpenAIProvider } from './azure-openai';
 import { OllamaProvider } from './ollama';
+import { ClaudeProvider } from './claude';
 
 /**
  * Provider registry that manages all available providers
@@ -205,6 +206,23 @@ export class ProviderFactory {
       this.registry.register(ollamaProvider);
     }
 
+    // Initialize Claude provider
+    const claudeApiKey = config.get<string>('claude.apiKey');
+    const claudeModel = config.get<string>('claude.model') || 'claude-3-sonnet-20240229';
+    const claudeTimeout = config.get<number>('claude.timeout') || 30000;
+    
+    if (claudeApiKey && claudeApiKey.trim().length > 0) {
+      const claudeConfig = {
+        name: 'Claude',
+        enabled: true,
+        timeout: claudeTimeout,
+        apiKey: claudeApiKey,
+        model: claudeModel
+      };
+      const claudeProvider = new ClaudeProvider(claudeConfig);
+      this.registry.register(claudeProvider);
+    }
+
     // Set active provider from settings or use first configured
     const activeProviderType = config.get<string>('activeProvider');
     if (activeProviderType) {
@@ -233,7 +251,7 @@ export class ProviderFactory {
         return new AzureOpenAIProvider(config);
       
       case ProviderType.CLAUDE:
-        throw new Error('Claude provider not yet implemented (Phase 4)');
+        return new ClaudeProvider(config);
       
       case ProviderType.OLLAMA:
         return new OllamaProvider(config);
