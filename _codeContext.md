@@ -45,3 +45,20 @@ Latest changes before v0.0.1 tag:
 - Error prompts: added LLM refinement path and marker; templates still used on failure.
 - Analyzer: added `sampleQueries` collection for additional context to LLM.
 
+Phase 2 & 3 Completion (v0.0.5 Candidate):
+- **Phase 2 (Quality of Life):**
+  - **Security:** Added `sanitizePrompt` regex to redact API keys and passwords from prompts (Issue #24).
+  - **Context:** Added ASCII directory tree generation in `analyzer.ts` via `generateAsciiTree` (Issue #25).
+  - **UI:** Implemented `SidebarProvider` (Webview) to display prompts. Prompts now appear in a dedicated "Prompt Assistant" sidebar instead of just the Output panel (Issue #23).
+- **Phase 3 (Production Readiness):**
+  - **Multi-Language:** Added detection and stack trace parsing for Python, Java, and Go (Issue #27).
+  - **Testing:** Added `mocha` test infrastructure, `runTest.ts`, and unit tests for `sanitizer.ts`. Configured `npm test` (Issue #26).
+  - **Telemetry:** Added `TelemetryService` interface for event logging (currently logs to Output Channel for privacy/MVP) (Issue #28).
+
+Analysis & Roadmap (Current State):
+- **Status:** Feature Complete for planned MVP enhancements.
+- **Test Coverage:** Basic unit tests for sanitizer. Need to expand to `analyzer` and `extension` logic.
+- **UI:** Functional Webview sidebar replacing raw text output.
+- **Next Steps:** Polish UI CSS, add "Send to API" button directly in Sidebar (if API key present), and comprehensive integration tests.
+
+

@@ -4,12 +4,25 @@ import { analyzeProject, getCodeSnippetAround } from "./analyzer";
 import { buildErrorPrompt, buildProjectPrompt, defaultProjectTaskIdeas, ecommerceTaskIdeas, buildLLMUserProjectMessage, buildLLMUserErrorMessage } from "./templates";
 import { buildGroqClientFromSettings, buildErrorSystemPrompt, buildProjectSystemPrompt } from "./llm";
 import { ProviderFactory, ProviderRegistry } from "./providers/factory";
+import { sanitizePrompt } from "./sanitizer";
+import { TelemetryService } from "./telemetry";
+import { SidebarProvider } from "./sidebar";
 
 let output: vscode.OutputChannel | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
+let sidebarProvider: SidebarProvider | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   output = vscode.window.createOutputChannel("Prompt Craft");
+
+  // Register Sidebar
+  sidebarProvider = new SidebarProvider(context.extensionUri);
+  context.subscriptions.push(
+    vscode.window.registerWebviewViewProvider(
+      "promptCraft.sidebar",
+      sidebarProvider
+    )
+  );
 
   // Create status bar item
   statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -27,6 +40,9 @@ export async function activate(context: vscode.ExtensionContext) {
     updateStatusBar();
   }
 
+  // Initialize telemetry
+  TelemetryService.getInstance().sendEvent("EXTENSION_ACTIVATED");
+
   const generateErrorPromptCmd = vscode.commands.registerCommand(
     "prompt-craft.generateErrorPrompt",
     async () => {
@@ -35,6 +51,8 @@ export async function activate(context: vscode.ExtensionContext) {
       } catch (err) {
         log(`Failed to generate error prompt: ${toErrorMessage(err)}`);
         void vscode.window.showErrorMessage("Prompt Craft: Failed to generate error prompt.");
+        const sanitizedError = sanitizePrompt(toErrorMessage(err));
+        TelemetryService.getInstance().sendEvent("ERROR_PROMPT_FAILED", { error: sanitizedError });
       }
     }
   );
@@ -161,25 +179,66 @@ async function handleGenerateErrorPrompt(): Promise<void> {
   let line = errorInfo?.line;
   let stackTrace = errorInfo?.stack;
 
+  let useClipboard = false; // Hoist for telemetry
+
   if (!errorMessage) {
-    const pasted = await vscode.window.showInputBox({
-      prompt: "Paste error output (stack trace)",
-      ignoreFocusOut: true
-    });
-    if (!pasted) {
-      void vscode.window.showInformationMessage("No error provided.");
-      return;
+    // Enhance UX: Check clipboard for stack traces to avoid manual pasting
+    const clipboardText = await vscode.env.clipboard.readText();
+    const hasStackPattern = /Error:|Exception:|Traceback|at\s+[\w\.]+\s+\(|:\d+:\d+/i.test(clipboardText);
+    const parsedClipboard = parseStackForFileAndLine(clipboardText, root?.uri.fsPath);
+
+    if (hasStackPattern || parsedClipboard) {
+      const selection = await vscode.window.showQuickPick(
+        [
+          { 
+            label: "$(clippy) Use Clipboard Content", 
+            description: "Detected potential error/stack trace", 
+            detail: clipboardText.trim().slice(0, 120) + (clipboardText.length > 120 ? "..." : "") 
+          },
+          { 
+            label: "$(edit) Paste Manually", 
+            description: "Ignore clipboard and paste different error" 
+          }
+        ],
+        { placeHolder: "Error details detected in clipboard. Use them?" }
+      );
+
+      if (selection?.label.includes("Use Clipboard")) {
+        errorMessage = clipboardText.split("\n")[0]?.slice(0, 500) ?? clipboardText;
+        stackTrace = clipboardText;
+        filePath = parsedClipboard?.filePath;
+        line = parsedClipboard?.line;
+        useClipboard = true;
+      }
     }
-    errorMessage = pasted.split("\n")[0]?.slice(0, 500) ?? pasted;
-    stackTrace = pasted;
-    const parsed = parseStackForFileAndLine(pasted, root?.uri.fsPath);
-    filePath = parsed?.filePath;
-    line = parsed?.line;
+
+    if (!useClipboard) {
+      const pasted = await vscode.window.showInputBox({
+        prompt: "Paste error output (stack trace)",
+        ignoreFocusOut: true
+      });
+      if (!pasted) {
+        void vscode.window.showInformationMessage("No error provided.");
+        return;
+      }
+      errorMessage = pasted.split("\n")[0]?.slice(0, 500) ?? pasted;
+      stackTrace = pasted;
+      const parsed = parseStackForFileAndLine(pasted, root?.uri.fsPath);
+      filePath = parsed?.filePath;
+      line = parsed?.line;
+    }
   }
 
   let snippet: string | undefined;
+  let symbolDef: string | undefined;
   if (filePath && line) {
-    snippet = await getCodeSnippetAround(filePath, line, 12);
+    // Run parallel for speed
+    const [s, d] = await Promise.all([
+      getCodeSnippetAround(filePath, line, 12),
+      resolveSymbolDefinition(filePath, line)
+    ]);
+    snippet = s;
+    symbolDef = d;
   }
 
   const language = analysis?.techStack?.includes("TypeScript") ? "TypeScript" : "JavaScript";
@@ -192,6 +251,7 @@ async function handleGenerateErrorPrompt(): Promise<void> {
     filePath,
     line,
     codeSnippet: snippet,
+    symbolDefinition: symbolDef,
     architectureSummary: analysis?.architectureSummary
   });
   let finalPrompt = prompt;
@@ -212,6 +272,12 @@ async function handleGenerateErrorPrompt(): Promise<void> {
   }
 
   showPromptToUser("Error Prompt", `Generation: ${errorLlmUsed ? "LLM-enhanced" : "Template"}\n\n${finalPrompt}`);
+  
+  TelemetryService.getInstance().sendEvent("ERROR_PROMPT_GENERATED", {
+    language,
+    generationType: errorLlmUsed ? "llm" : "template",
+    hasClipboard: useClipboard ? "yes" : "no"
+  });
 }
 
 async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
@@ -248,7 +314,8 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
       techStack: analysis.techStack,
       dependencies: analysis.dependencies,
       taskIdea: idea,
-      contextHeader: contextHeaderLines
+      contextHeader: contextHeaderLines,
+      fileTree: analysis.fileTree
     })
   );
 
@@ -296,6 +363,15 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
     ? [header, prompts[0]].join("\n\n")
     : [header, ...prompts.map((p, i) => `===== Prompt ${i + 1} =====\n${p}`)].join("\n\n\n");
   showPromptToUser("Project Prompts", combined);
+
+  TelemetryService.getInstance().sendEvent("PROJECT_ANALYSIS_COMPLETED", {
+    techStack: analysis.techStack,
+    domain: analysis.domain.domain,
+    generationType: projectLlmUsed ? "llm" : "template"
+  }, {
+    fileCount: analysis.fileTree ? analysis.fileTree.split("\n").length : 0,
+    dependencyCount: analysis.dependencies.length
+  });
 }
 
 function getWorkspaceRoot(): vscode.WorkspaceFolder | undefined {
@@ -305,18 +381,29 @@ function getWorkspaceRoot(): vscode.WorkspaceFolder | undefined {
 }
 
 function showPromptToUser(title: string, text: string) {
+  const sanitized = sanitizePrompt(text);
+
+  // Always show in sidebar if it's available (it handles its own visibility/errors)
+  if (sidebarProvider) {
+      sidebarProvider.showPrompt(title, sanitized);
+      if (sidebarProvider.isReady()) {
+          vscode.commands.executeCommand('promptCraft.sidebar.focus');
+      }
+  }
+
+  // Always show in output channel as backup/history
   output?.clear();
   output?.appendLine(`# ${title}`);
   output?.appendLine("");
-  output?.appendLine(text);
+  output?.appendLine(sanitized);
   output?.show(true);
 
-  void vscode.env.clipboard.writeText(text);
+  void vscode.env.clipboard.writeText(sanitized);
   void vscode.window.showInformationMessage(
     `${title} generated and copied to clipboard.`,
     "Copy again"
   ).then((action) => {
-    if (action === "Copy again") void vscode.env.clipboard.writeText(text);
+    if (action === "Copy again") void vscode.env.clipboard.writeText(sanitized);
   });
 }
 
@@ -356,28 +443,59 @@ async function findErrorFromDiagnostics(): Promise<{
   return { ...best, stack: best.message };
 }
 
+interface StackPattern {
+  regex: RegExp;
+  extract: (match: RegExpMatchArray) => { path: string; line: string } | null;
+}
+
+const stackPatterns: StackPattern[] = [
+  {
+    // Windows paths: C:\\path\\to\\file.ts:10:5
+    regex: /(\(|\s)([A-Za-z]:\\\\[^\s)]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/,
+    extract: (m) => ({ path: m[2], line: m[3] })
+  },
+  {
+    // POSIX paths: /path/to/file.ts:10:5
+    regex: /(\(|\s)([\/A-Za-z0-9_.:\\-]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/,
+    extract: (m) => ({ path: m[2], line: m[3] })
+  },
+  {
+    // file URLs: file:///.../file.ts:10:5
+    regex: /file:\/\/(.+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  },
+  {
+    // Python: File "path/to/file.py", line 10
+    regex: /File "([^"]+)", line (\d+)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  },
+  {
+    // Java: at com.pkg.Cls.method(File.java:10)
+    regex: /at\s+[\w\.]+\(([^:]+\.java):(\d+)\)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  },
+  {
+    // Go: path/to/file.go:10
+    regex: /([\/A-Za-z0-9_.:\\-]+\.go):(\d+)/,
+    extract: (m) => ({ path: m[1], line: m[2] })
+  }
+];
+
 function parseStackForFileAndLine(stack: string, rootPath?: string): { filePath: string; line: number } | undefined {
-  // Handles:
-  // - /path/to/file.ts:10:5
-  // - C:\\path\\to\\file.ts:10:5
-  // - file:///.../file.ts:10:5
-  // - at func (path:line:col)
-  const regexes = [
-    /(\(|\s)([A-Za-z]:\\\\[^\s)]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/, // Windows paths
-    /(\(|\s)([\/A-Za-z0-9_.:\\-]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/, // POSIX paths
-    /file:\/\/(.+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)/ // file URLs
-  ];
   const lines = stack.split(/\r?\n/);
   for (const currentLine of lines) {
-    for (const rx of regexes) {
-      const match = currentLine.match(rx);
+    for (const { regex, extract } of stackPatterns) {
+      const match = currentLine.match(regex);
       if (match) {
-        const pathGroup = match[2] ?? match[1];
-        const lineGroup = match[3] ?? match[2];
-        const lineNumber = parseInt(lineGroup, 10);
-        const p = pathGroup;
-        const resolved = rootPath && p && !path.isAbsolute(p) ? path.join(rootPath, p) : p;
-        return p ? { filePath: resolved, line: lineNumber } : undefined;
+        const result = extract(match);
+        if (result && result.path && result.line) {
+          const lineNumber = parseInt(result.line, 10);
+          let resolved = result.path;
+          if (rootPath && !path.isAbsolute(resolved)) {
+            resolved = path.join(rootPath, resolved);
+          }
+          return { filePath: resolved, line: lineNumber };
+        }
       }
     }
   }
@@ -538,5 +656,84 @@ async function handleShowProviderStatus(): Promise<void> {
 
   output?.show(true);
   void vscode.window.showInformationMessage("Provider status displayed in output panel.");
+}
+
+async function resolveSymbolDefinition(filePath: string, line: number): Promise<string | undefined> {
+  try {
+    const uri = vscode.Uri.file(filePath);
+    // Open document to read line text
+    const document = await vscode.workspace.openTextDocument(uri);
+    // line is 1-based, VS Code is 0-based
+    if (line - 1 >= document.lineCount) return undefined;
+    
+    const lineText = document.lineAt(line - 1).text;
+    
+    // Simple tokenizer to find identifiers
+    const reserved = new Set([
+      "const", "let", "var", "function", "class", "import", "export", "from", 
+      "return", "if", "else", "await", "async", "try", "catch", "new", "this", 
+      "throw", "console", "log", "void", "null", "undefined", "true", "false"
+    ]);
+    
+    const regex = /[a-zA-Z_][a-zA-Z0-9_]*/g;
+    const candidates: { word: string; range: vscode.Range }[] = [];
+    let match;
+    
+    while ((match = regex.exec(lineText)) !== null) {
+      const word = match[0];
+      // Filter out reserved words and short variables (often loop counters like i, j)
+      if (!reserved.has(word) && word.length > 2) { 
+         candidates.push({ 
+           word, 
+           range: new vscode.Range(line - 1, match.index, line - 1, match.index + word.length) 
+         });
+      }
+    }
+
+    // Limit to first 3 candidates to avoid performance hit
+    const results: string[] = [];
+    for (const cand of candidates.slice(0, 3)) {
+      try {
+        const locations = await vscode.commands.executeCommand<vscode.Location[] | vscode.LocationLink[]>(
+          "vscode.executeDefinitionProvider",
+          uri,
+          cand.range.start
+        );
+        
+        if (locations && locations.length > 0) {
+          // Take the first location
+          const loc = locations[0];
+          let targetUri: vscode.Uri;
+          let targetRange: vscode.Range;
+          
+          if ("targetUri" in loc) { // LocationLink
+             targetUri = loc.targetUri;
+             targetRange = loc.targetRange;
+          } else { // Location
+             targetUri = loc.uri;
+             targetRange = loc.range;
+          }
+          
+          // Don't include if it's the same file and very close (redundant context)
+          const isSameFile = targetUri.fsPath === filePath;
+          const isClose = Math.abs(targetRange.start.line - (line - 1)) < 5;
+          if (isSameFile && isClose) continue;
+
+          // Read the definition source (5 lines of context)
+          const defSnippet = await getCodeSnippetAround(targetUri.fsPath, targetRange.start.line + 1, 5); 
+          if (defSnippet) {
+             results.push(`Definition of '${cand.word}' in ${path.basename(targetUri.fsPath)}:\n${defSnippet}`);
+          }
+        }
+      } catch {
+        // Ignore individual symbol resolution failures
+      }
+    }
+    
+    return results.length > 0 ? results.join("\n\n") : undefined;
+  } catch (err) {
+    log(`Symbol resolution failed: ${toErrorMessage(err)}`);
+    return undefined;
+  }
 }
 

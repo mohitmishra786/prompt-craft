@@ -6,6 +6,7 @@ export interface ErrorPromptInput {
   filePath?: string;
   line?: number;
   codeSnippet?: string;
+  symbolDefinition?: string; // New field for deep context
   architectureSummary?: string;
 }
 
@@ -16,26 +17,7 @@ export interface ProjectPromptInput {
   dependencies: string[];
   taskIdea: string;
   contextHeader?: string;
-}
-
-export function buildErrorPrompt(input: ErrorPromptInput): string {
-  const deps = input.dependencies.length > 0 ? input.dependencies.join(", ") : "unknown dependencies";
-  const stack = input.stackTrace ? `\nStack trace:\n${input.stackTrace}` : "";
-  const fileLoc = input.filePath ? `${input.filePath}${input.line ? ":" + input.line : ""}` : "unknown location";
-  const snippet = input.codeSnippet ? `\nRelevant code from ${fileLoc}:\n\n${input.codeSnippet}` : "";
-  const arch = input.architectureSummary ? `\nArchitecture summary: ${input.architectureSummary}` : "";
-
-  return [
-    `Context: You are helping with a ${input.language} project using ${deps}.`,
-    `Error Details: ${input.errorMessage}`,
-    stack.trim(),
-    snippet.trim(),
-    arch.trim(),
-    `Goal: Explain why this failed and propose precise code-level fixes. Provide step-by-step guidance and note any assumptions.`,
-    `Constraints: Keep solutions compatible with the current dependencies and language level.`
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  fileTree?: string;
 }
 
 export function buildProjectPrompt(input: ProjectPromptInput): string {
@@ -50,6 +32,10 @@ export function buildProjectPrompt(input: ProjectPromptInput): string {
     contextLines.push(`Dependencies: ${deps}`);
   }
 
+  if (input.fileTree) {
+    contextLines.push(`\nProject Structure:\n${input.fileTree}`);
+  }
+
   const body = [
     `Task: ${input.taskIdea}.`,
     `Deliverable: A concise plan with steps, code edits where relevant, and considerations for testing and DX.`,
@@ -57,6 +43,28 @@ export function buildProjectPrompt(input: ProjectPromptInput): string {
   ].join("\n");
 
   return `${contextLines.join("\n")}\n\n${body}`;
+}
+
+export function buildErrorPrompt(input: ErrorPromptInput): string {
+  const deps = input.dependencies.length > 0 ? input.dependencies.join(", ") : "unknown dependencies";
+  const stack = input.stackTrace ? `\nStack trace:\n${input.stackTrace}` : "";
+  const fileLoc = input.filePath ? `${input.filePath}${input.line ? ":" + input.line : ""}` : "unknown location";
+  const snippet = input.codeSnippet ? `\nRelevant code from ${fileLoc}:\n\n${input.codeSnippet}` : "";
+  const symbolDef = input.symbolDefinition ? `\nSymbol Definition (Deep Context):\n${input.symbolDefinition}` : "";
+  const arch = input.architectureSummary ? `\nArchitecture summary: ${input.architectureSummary}` : "";
+
+  return [
+    `Context: You are helping with a ${input.language} project using ${deps}.`,
+    `Error Details: ${input.errorMessage}`,
+    stack.trim(),
+    snippet.trim(),
+    symbolDef.trim(),
+    arch.trim(),
+    `Goal: Explain why this failed and propose precise code-level fixes. Provide step-by-step guidance and note any assumptions.`,
+    `Constraints: Keep solutions compatible with the current dependencies and language level.`
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 export function defaultProjectTaskIdeas(detected: {
@@ -116,4 +124,3 @@ export function buildLLMUserProjectMessage(analysis: Record<string, unknown>): s
 export function buildLLMUserErrorMessage(errorPrompt: string): string {
   return `Error prompt to refine:\n\n${errorPrompt.slice(0, 8000)}`;
 }
-

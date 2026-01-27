@@ -1,3 +1,4 @@
+import * as vscode from "vscode";
 import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
@@ -29,6 +30,37 @@ export interface ProjectAnalysisResult {
   controllers: { file: string; functions: string[] }[];
   models: { file: string; fields: string[] }[];
   sampleQueries?: string[];
+  fileTree?: string;
+}
+
+async function detectTechStack(rootPath: string, pkg?: PackageJson): Promise<string> {
+  // Check for other languages first
+  const exists = async (f: string) => {
+    try {
+      await fsp.stat(path.join(rootPath, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (await exists("requirements.txt") || await exists("pyproject.toml") || await exists("Pipfile")) {
+    return "Python";
+  }
+  if (await exists("pom.xml") || await exists("build.gradle")) {
+    return "Java";
+  }
+  if (await exists("go.mod")) {
+    return "Go";
+  }
+  if (await exists("Cargo.toml")) {
+    return "Rust";
+  }
+
+  // Fallback to JS/Node
+  if (!pkg) return "JavaScript/Node.js";
+  const hasTS = pkg.devDependencies?.["typescript"] || pkg.dependencies?.["typescript"];
+  return hasTS ? "TypeScript/Node.js" : "JavaScript/Node.js";
 }
 
 export async function analyzeProject(rootPath: string, maxFiles: number = 100): Promise<ProjectAnalysisResult> {
@@ -37,7 +69,7 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
 
   const pkg = await readJsonSafe<PackageJson>(packageJsonPath);
   const dependencies = extractDependencies(pkg);
-  const techStack = detectTechStack(pkg);
+  const techStack = await detectTechStack(rootPath, pkg);
   const readmeSummary = await summarizeReadme(readmePath);
 
   const files = await collectFiles(rootPath, maxFiles);
@@ -47,6 +79,9 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
   const controllers = await extractControllerFunctions(files, rootPath);
   const models = await extractMongooseModelFields(files, rootPath);
   const sampleQueries = await extractSampleQueries(files);
+
+  // Generate ASCII Tree
+  const fileTree = generateAsciiTree(files, rootPath);
 
   return {
     rootPath,
@@ -58,7 +93,8 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
     domain,
     controllers,
     models,
-    sampleQueries
+    sampleQueries,
+    fileTree
   };
 }
 
@@ -104,12 +140,6 @@ function extractDependencies(pkg?: PackageJson): string[] {
   return Array.from(deps).sort();
 }
 
-function detectTechStack(pkg?: PackageJson): string {
-  if (!pkg) return "JavaScript/Node.js";
-  const hasTS = pkg.devDependencies?.["typescript"] || pkg.dependencies?.["typescript"];
-  return hasTS ? "TypeScript/Node.js" : "JavaScript/Node.js";
-}
-
 async function summarizeReadme(readmePath: string): Promise<string | undefined> {
   try {
     const raw = await fsp.readFile(readmePath, "utf8");
@@ -126,40 +156,31 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 3) + "...";
 }
 
+/**
+ * Replaces recursive fs walk with VS Code's native fast file search.
+ * This respects .gitignore and performs significantly better on large repos.
+ */
 async function collectFiles(root: string, maxFiles: number): Promise<string[]> {
-  const results: string[] = [];
-  const ignored = new Set([
-    "node_modules",
-    ".git",
-    "out",
-    "dist",
-    ".vscode"
-  ]);
+  // Broad pattern to capture code and config files
+  // Supports JS/TS ecosystem plus Python, Java, Go, and web standards
+  const includePattern = new vscode.RelativePattern(
+    root,
+    "**/*.{js,ts,jsx,tsx,json,md,py,java,go,html,css,scss,mjs,cjs}"
+  );
 
-  async function walk(dir: string): Promise<void> {
-    if (results.length >= maxFiles) return;
-    let entries: fs.Dirent[] = [];
-    try {
-      entries = await fsp.readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (results.length >= maxFiles) break;
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (ignored.has(entry.name)) continue;
-        await walk(full);
-      } else {
-        // Only include common text/code files to keep analysis fast
-        if (!/\.(md|js|ts|jsx|tsx|json|mjs|cjs)$/i.test(full)) continue;
-        results.push(full);
-      }
-    }
+  // Standard exclusions (node_modules, build artifacts, dotfiles)
+  // VS Code's findFiles automatically respects .gitignore if we don't pass 'useIgnoreFiles=false'
+  // But explicit excludes help reduce noise early
+  const excludePattern = "**/{node_modules,.git,out,dist,build,.vscode,coverage,target,bin,obj,vendor}/**";
+
+  try {
+    const uris = await vscode.workspace.findFiles(includePattern, excludePattern, maxFiles);
+    return uris.map((u) => u.fsPath);
+  } catch (err) {
+    // Fallback or empty on error (e.g. if VS Code API isn't ready in test env)
+    console.error("Error finding files:", err);
+    return [];
   }
-
-  await walk(root);
-  return results;
 }
 
 function detectArchitecture(files: string[], root: string): string {
@@ -225,3 +246,36 @@ async function extractSampleQueries(files: string[]): Promise<string[]> {
   return queries;
 }
 
+function generateAsciiTree(filePaths: string[], rootPath: string): string {
+  const relativePaths = filePaths.map(p => path.relative(rootPath, p)).sort();
+  const tree: string[] = [];
+  const seenPaths = new Set<string>();
+
+  relativePaths.forEach(filePath => {
+    const parts = filePath.split(path.sep);
+    let currentLevel = 0;
+    
+    parts.forEach((part, index) => {
+      const isLastPart = index === parts.length - 1;
+      const pathSoFar = parts.slice(0, index + 1).join(path.sep);
+      
+      if (!seenPaths.has(pathSoFar)) {
+        seenPaths.add(pathSoFar);
+        
+        // Limit depth to avoid clutter
+        if (currentLevel < 4) {
+             const connector = isLastPart ? "└── " : "├── ";
+             tree.push(`${"  ".repeat(currentLevel)}${connector}${part}`);
+        }
+      }
+      currentLevel++;
+    });
+  });
+
+  // Limit total tree lines to 20 to preserve prompt space
+  if (tree.length > 20) {
+      return tree.slice(0, 20).join("\n") + "\n  ... (truncated)";
+  }
+
+  return tree.join("\n");
+}

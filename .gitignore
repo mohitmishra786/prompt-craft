@@ -27,3 +27,4 @@ coverage/
 
 # IDE
 .idea/
+.vscode-test/
