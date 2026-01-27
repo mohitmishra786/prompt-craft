@@ -224,6 +224,26 @@
           "scope": "application",
           "minimum": 1000,
           "maximum": 60000
+        },
+        "promptCraft.telemetry.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable anonymous telemetry to help improve the extension."
+        },
+        "promptCraft.customTemplates": {
+          "type": "array",
+          "default": [],
+          "description": "User-defined prompt templates.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": { "type": "string" },
+              "name": { "type": "string" },
+              "description": { "type": "string" },
+              "template": { "type": "string" },
+              "type": { "type": "string", "enum": ["error", "project"] }
+            }
+          }
         }
       }
     }

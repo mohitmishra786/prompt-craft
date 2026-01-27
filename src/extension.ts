@@ -7,6 +7,7 @@ import { ProviderFactory, ProviderRegistry } from "./providers/factory";
 import { sanitizePrompt } from "./sanitizer";
 import { TelemetryService } from "./telemetry";
 import { SidebarProvider } from "./sidebar";
+import { TemplateManager } from "./templateManager";
 
 let output: vscode.OutputChannel | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -118,6 +119,15 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  const useTemplateCmd = vscode.commands.registerCommand(
+    "prompt-craft.useTemplate",
+    async (args: { id: string, type: 'error' | 'project' }) => {
+        // This is a placeholder for the logic that will be triggered when a template is selected.
+        // It will be used by the sidebar to signal which template to apply.
+        // The actual generation logic will be moved to shared handlers.
+    }
+  );
+
   context.subscriptions.push(
     generateErrorPromptCmd, 
     analyzeProjectCmd, 
@@ -125,6 +135,7 @@ export async function activate(context: vscode.ExtensionContext) {
     testProviderCmd,
     reloadProvidersCmd,
     showProviderStatusCmd,
+    useTemplateCmd,
     output
   );
 
@@ -411,6 +422,8 @@ function showPromptToUser(title: string, text: string) {
 
   // Always show in sidebar if it's available (it handles its own visibility/errors)
   if (sidebarProvider) {
+      // If title matches a prompt type, we might want to show templates instead?
+      // For now, just show the generated prompt.
       sidebarProvider.showPrompt(title, sanitized);
       if (sidebarProvider.isReady()) {
           vscode.commands.executeCommand('promptCraft.sidebar.focus');
