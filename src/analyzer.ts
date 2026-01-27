@@ -30,6 +30,7 @@ export interface ProjectAnalysisResult {
   controllers: { file: string; functions: string[] }[];
   models: { file: string; fields: string[] }[];
   sampleQueries?: string[];
+  fileTree?: string;
 }
 
 export async function analyzeProject(rootPath: string, maxFiles: number = 100): Promise<ProjectAnalysisResult> {
@@ -49,6 +50,9 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
   const models = await extractMongooseModelFields(files, rootPath);
   const sampleQueries = await extractSampleQueries(files);
 
+  // Generate ASCII Tree
+  const fileTree = generateAsciiTree(files, rootPath);
+
   return {
     rootPath,
     techStack,
@@ -59,7 +63,8 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
     domain,
     controllers,
     models,
-    sampleQueries
+    sampleQueries,
+    fileTree
   };
 }
 
@@ -215,6 +220,40 @@ async function extractSampleQueries(files: string[]): Promise<string[]> {
     }
   }
   return queries;
+}
+
+function generateAsciiTree(filePaths: string[], rootPath: string): string {
+  const relativePaths = filePaths.map(p => path.relative(rootPath, p)).sort();
+  const tree: string[] = [];
+  const seenPaths = new Set<string>();
+
+  relativePaths.forEach(filePath => {
+    const parts = filePath.split(path.sep);
+    let currentLevel = 0;
+    
+    parts.forEach((part, index) => {
+      const isLastPart = index === parts.length - 1;
+      const pathSoFar = parts.slice(0, index + 1).join(path.sep);
+      
+      if (!seenPaths.has(pathSoFar)) {
+        seenPaths.add(pathSoFar);
+        const prefix = "  ".repeat(currentLevel) + (isLastPart ? "├── " : "└── "); // Simplified prefixing
+        
+        // Limit depth to avoid clutter
+        if (currentLevel < 4) {
+             tree.push(`${"  ".repeat(currentLevel)}├── ${part}`);
+        }
+      }
+      currentLevel++;
+    });
+  });
+
+  // Limit total tree lines to 20 to preserve prompt space
+  if (tree.length > 20) {
+      return tree.slice(0, 20).join("\n") + "\n  ... (truncated)";
+  }
+
+  return tree.join("\n");
 }
 
 

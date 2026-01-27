@@ -17,7 +17,34 @@ export interface ProjectPromptInput {
   dependencies: string[];
   taskIdea: string;
   contextHeader?: string;
+  fileTree?: string;
 }
+
+export function buildProjectPrompt(input: ProjectPromptInput): string {
+  const deps = input.dependencies.length > 0 ? input.dependencies.join(", ") : "unknown dependencies";
+  const contextLines: string[] = [];
+  if (input.contextHeader) {
+    contextLines.push(input.contextHeader);
+  } else {
+    contextLines.push(`Analyze this ${input.techStack} project.`);
+    if (input.readmeSummary) contextLines.push(`README: ${input.readmeSummary}`);
+    if (input.archDetails) contextLines.push(`Architecture: ${input.archDetails}`);
+    contextLines.push(`Dependencies: ${deps}`);
+  }
+
+  if (input.fileTree) {
+    contextLines.push(`\nProject Structure:\n${input.fileTree}`);
+  }
+
+  const body = [
+    `Task: ${input.taskIdea}.`,
+    `Deliverable: A concise plan with steps, code edits where relevant, and considerations for testing and DX.`,
+    `Constraints: Ensure compatibility with the existing stack and avoid large refactors unless justified.`
+  ].join("\n");
+
+  return `${contextLines.join("\n")}\n\n${body}`;
+}
+
 
 export function buildErrorPrompt(input: ErrorPromptInput): string {
   const deps = input.dependencies.length > 0 ? input.dependencies.join(", ") : "unknown dependencies";

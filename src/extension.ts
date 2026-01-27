@@ -290,7 +290,8 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
       techStack: analysis.techStack,
       dependencies: analysis.dependencies,
       taskIdea: idea,
-      contextHeader: contextHeaderLines
+      contextHeader: contextHeaderLines,
+      fileTree: analysis.fileTree
     })
   );
 
