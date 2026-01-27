@@ -26,4 +26,5 @@ coverage/
 *.vsix
 
 # IDE
-.idea/.vscode-test/
+.idea/
+.vscode-test/
