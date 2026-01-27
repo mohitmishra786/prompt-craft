@@ -1,8 +1,8 @@
 {
   "name": "prompt-craft",
-  "displayName": "Prompt Craft",
-  "description": "Generate detailed prompts for AI coding tools based on errors and project analysis.",
-  "version": "0.0.3",
+  "displayName": "Prompt Craft Pro",
+  "description": "The Ultimate AI Prompting Companion. Generate context-aware prompts for ChatGPT, Claude, and Copilot by analyzing your code, architecture, and errors.",
+  "version": "0.1.0",
   "publisher": "mohitmishra",
   "icon": "prompt-craft.png",
   "engines": {
