@@ -8,6 +8,7 @@ import { LLMProvider, ProviderType, ProviderConfig } from './base';
 import { GroqProvider } from './groq';
 import { OpenAIProvider } from './openai';
 import { AzureOpenAIProvider } from './azure-openai';
+import { OllamaProvider } from './ollama';
 
 /**
  * Provider registry that manages all available providers
@@ -186,6 +187,24 @@ export class ProviderFactory {
       this.registry.register(azureProvider);
     }
 
+    // Initialize Ollama provider
+    const ollamaEnabled = config.get<boolean>('ollama.enabled', false);
+    const ollamaBaseUrl = config.get<string>('ollama.baseUrl') || 'http://localhost:11434/api';
+    const ollamaModel = config.get<string>('ollama.model') || 'llama3';
+    const ollamaTimeout = config.get<number>('ollama.timeout') || 60000;
+    
+    if (ollamaEnabled) {
+      const ollamaConfig = {
+        name: 'Ollama',
+        enabled: true,
+        timeout: ollamaTimeout,
+        baseUrl: ollamaBaseUrl,
+        model: ollamaModel
+      };
+      const ollamaProvider = new OllamaProvider(ollamaConfig);
+      this.registry.register(ollamaProvider);
+    }
+
     // Set active provider from settings or use first configured
     const activeProviderType = config.get<string>('activeProvider');
     if (activeProviderType) {
@@ -217,7 +236,7 @@ export class ProviderFactory {
         throw new Error('Claude provider not yet implemented (Phase 4)');
       
       case ProviderType.OLLAMA:
-        throw new Error('Ollama provider not yet implemented (Phase 4)');
+        return new OllamaProvider(config);
       
       default:
         throw new Error(`Unknown provider type: ${type}`);

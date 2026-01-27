@@ -171,6 +171,32 @@
           "scope": "application",
           "minimum": 1000,
           "maximum": 60000
+        },
+        "promptCraft.ollama.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Ollama local provider support",
+          "scope": "application"
+        },
+        "promptCraft.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434/api",
+          "description": "Ollama API base URL",
+          "scope": "application"
+        },
+        "promptCraft.ollama.model": {
+          "type": "string",
+          "default": "llama3",
+          "description": "Ollama model to use (e.g. llama3, codellama, mistral)",
+          "scope": "application"
+        },
+        "promptCraft.ollama.timeout": {
+          "type": "number",
+          "default": 60000,
+          "description": "Timeout for Ollama API requests in milliseconds.",
+          "scope": "application",
+          "minimum": 1000,
+          "maximum": 300000
         }
       }
     }
