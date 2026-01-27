@@ -33,13 +33,43 @@ export interface ProjectAnalysisResult {
   fileTree?: string;
 }
 
+async function detectTechStack(rootPath: string, pkg?: PackageJson): Promise<string> {
+  // Check for other languages first
+  const exists = async (f: string) => {
+    try {
+      await fsp.stat(path.join(rootPath, f));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  if (await exists("requirements.txt") || await exists("pyproject.toml") || await exists("Pipfile")) {
+    return "Python";
+  }
+  if (await exists("pom.xml") || await exists("build.gradle")) {
+    return "Java";
+  }
+  if (await exists("go.mod")) {
+    return "Go";
+  }
+  if (await exists("Cargo.toml")) {
+    return "Rust";
+  }
+
+  // Fallback to JS/Node
+  if (!pkg) return "JavaScript/Node.js";
+  const hasTS = pkg.devDependencies?.["typescript"] || pkg.dependencies?.["typescript"];
+  return hasTS ? "TypeScript/Node.js" : "JavaScript/Node.js";
+}
+
 export async function analyzeProject(rootPath: string, maxFiles: number = 100): Promise<ProjectAnalysisResult> {
   const packageJsonPath = path.join(rootPath, "package.json");
   const readmePath = path.join(rootPath, "README.md");
 
   const pkg = await readJsonSafe<PackageJson>(packageJsonPath);
   const dependencies = extractDependencies(pkg);
-  const techStack = detectTechStack(pkg);
+  const techStack = await detectTechStack(rootPath, pkg);
   const readmeSummary = await summarizeReadme(readmePath);
 
   const files = await collectFiles(rootPath, maxFiles);
@@ -108,12 +138,6 @@ function extractDependencies(pkg?: PackageJson): string[] {
   add(pkg?.dependencies);
   add(pkg?.devDependencies);
   return Array.from(deps).sort();
-}
-
-function detectTechStack(pkg?: PackageJson): string {
-  if (!pkg) return "JavaScript/Node.js";
-  const hasTS = pkg.devDependencies?.["typescript"] || pkg.dependencies?.["typescript"];
-  return hasTS ? "TypeScript/Node.js" : "JavaScript/Node.js";
 }
 
 async function summarizeReadme(readmePath: string): Promise<string | undefined> {
@@ -255,5 +279,3 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
 
   return tree.join("\n");
 }
-
-

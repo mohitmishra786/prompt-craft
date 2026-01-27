@@ -407,22 +407,58 @@ function parseStackForFileAndLine(stack: string, rootPath?: string): { filePath:
   // - C:\\path\\to\\file.ts:10:5
   // - file:///.../file.ts:10:5
   // - at func (path:line:col)
+  // - Python: File "path/to/file.py", line 10
+  // - Java: at com.pkg.Cls.method(File.java:10)
+  // - Go: path/to/file.go:10
   const regexes = [
     /(\(|\s)([A-Za-z]:\\\\[^\s)]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/, // Windows paths
     /(\(|\s)([\/A-Za-z0-9_.:\\-]+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)(\))?/, // POSIX paths
-    /file:\/\/(.+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)/ // file URLs
+    /file:\/\/(.+\.(?:ts|js|tsx|jsx)):(\d+):(\d+)/, // file URLs
+    /File "([^"]+)", line (\d+)/, // Python
+    /at\s+[\w\.]+\(([^:]+\.java):(\d+)\)/, // Java (simple class file match)
+    /([\/A-Za-z0-9_.:\\-]+\.go):(\d+)/ // Go
   ];
   const lines = stack.split(/\r?\n/);
   for (const currentLine of lines) {
     for (const rx of regexes) {
       const match = currentLine.match(rx);
       if (match) {
-        const pathGroup = match[2] ?? match[1];
-        const lineGroup = match[3] ?? match[2];
-        const lineNumber = parseInt(lineGroup, 10);
-        const p = pathGroup;
-        const resolved = rootPath && p && !path.isAbsolute(p) ? path.join(rootPath, p) : p;
-        return p ? { filePath: resolved, line: lineNumber } : undefined;
+        // Match groups vary by regex. We try to find the path and line.
+        // JS/TS/Go: Group 2 (path), Group 3 (line) OR Group 1 (path), Group 2 (line) depending on parenthesis
+        // Python: Group 1 (path), Group 2 (line)
+        // Java: Group 1 (file only), Group 2 (line) - Java is tricky as full path isn't always in stack trace.
+        // We prioritize explicit full path matches.
+
+        let p: string | undefined;
+        let lineGroup: string | undefined;
+
+        if (rx.source.includes("File")) { // Python
+             p = match[1];
+             lineGroup = match[2];
+        } else if (rx.source.includes(".java")) { // Java
+             // Java stack traces often only give "File.java". We might need to fuzzy find it or just return filename.
+             // For now, we return it as is, and the resolver might fail if it's not absolute.
+             // Improvement: Use workspace.findFiles to resolve simple java filenames to full paths?
+             p = match[1];
+             lineGroup = match[2];
+        } else if (rx.source.includes(".go")) { // Go
+             p = match[1];
+             lineGroup = match[2];
+        } else { // JS/TS
+             p = match[2] ?? match[1];
+             lineGroup = match[3] ?? match[2];
+        }
+
+        if (p && lineGroup) {
+             const lineNumber = parseInt(lineGroup, 10);
+             // Resolve relative paths or Java filenames against root
+             let resolved = p;
+             if (rootPath && !path.isAbsolute(p)) {
+                 // Basic resolve
+                 resolved = path.join(rootPath, p);
+             }
+             return { filePath: resolved, line: lineNumber };
+        }
       }
     }
   }
