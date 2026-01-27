@@ -7,11 +7,11 @@
  */
 
 import axios, { AxiosInstance } from 'axios';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { LLMProvider, LLMRequest, LLMResponse, ProviderType, ProviderConfig, ProviderCapabilities } from './base';
-
-const execAsync = promisify(exec);
+import { 
+  AzureCliCredential, 
+  ManagedIdentityCredential
+} from '@azure/identity';
 
 export type AzureAuthMethod = 'apiKey' | 'azureCli' | 'managedIdentity';
 
@@ -26,11 +26,6 @@ export interface AzureOpenAIProviderConfig extends ProviderConfig {
   managedIdentityClientId?: string;
 }
 
-interface AzureToken {
-  accessToken: string;
-  expiresOn: Date;
-}
-
 export class AzureOpenAIProvider extends LLMProvider {
   private http: AxiosInstance;
   private endpoint: string;
@@ -38,10 +33,11 @@ export class AzureOpenAIProvider extends LLMProvider {
   private deploymentName: string;
   private apiVersion: string;
   private authMethod: AzureAuthMethod;
-  private cachedToken: AzureToken | null = null;
   private subscriptionId?: string;
   private tenantId?: string;
   private managedIdentityClientId?: string;
+  private azureCliCredential?: AzureCliCredential;
+  private managedIdentityCredential?: ManagedIdentityCredential;
 
   constructor(config: AzureOpenAIProviderConfig) {
     super(config);
@@ -148,48 +144,14 @@ export class AzureOpenAIProvider extends LLMProvider {
    * Get access token from Azure CLI
    */
   private async getAzureCliToken(): Promise<string> {
-    // Check if we have a valid cached token
-    if (this.cachedToken && this.cachedToken.expiresOn > new Date()) {
-      return this.cachedToken.accessToken;
-    }
-
     try {
-      // Check if Azure CLI is installed
-      try {
-        await execAsync('az --version');
-      } catch {
-        throw new Error('Azure CLI is not installed. Please install it from https://aka.ms/azure-cli');
+      if (!this.azureCliCredential) {
+        this.azureCliCredential = new AzureCliCredential();
       }
-
-      // Check if user is logged in
-      try {
-        await execAsync('az account show');
-      } catch {
-        throw new Error('Not logged in to Azure CLI. Please run: az login');
-      }
-
-      // Get access token for Azure Cognitive Services
-      const resource = 'https://cognitiveservices.azure.com';
-      const cmd = `az account get-access-token --resource ${resource} --query "accessToken" -o tsv`;
-      
-      const { stdout } = await execAsync(cmd);
-      const accessToken = stdout.trim();
-
-      if (!accessToken) {
-        throw new Error('Failed to obtain access token from Azure CLI');
-      }
-
-      // Parse token expiration (Azure CLI tokens typically last 1 hour)
-      const expiresOn = new Date();
-      expiresOn.setHours(expiresOn.getHours() + 1);
-
-      this.cachedToken = { accessToken, expiresOn };
-      return accessToken;
+      const token = await this.azureCliCredential.getToken("https://cognitiveservices.azure.com/.default");
+      return token.token;
     } catch (error) {
-      if (error instanceof Error) {
-        throw error;
-      }
-      throw new Error(`Azure CLI authentication failed: ${String(error)}`);
+      throw new Error(`Azure CLI authentication failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -197,54 +159,14 @@ export class AzureOpenAIProvider extends LLMProvider {
    * Get access token from Azure Managed Identity
    */
   private async getManagedIdentityToken(): Promise<string> {
-    // Check if we have a valid cached token
-    if (this.cachedToken && this.cachedToken.expiresOn > new Date()) {
-      return this.cachedToken.accessToken;
-    }
-
     try {
-      // Azure Instance Metadata Service (IMDS) endpoint
-      const imdsEndpoint = 'http://169.254.169.254/metadata/identity/oauth2/token';
-      const resource = 'https://cognitiveservices.azure.com';
-      
-      const params: Record<string, string> = {
-        'api-version': '2018-02-01',
-        resource
-      };
-
-      // Add client_id if using user-assigned managed identity
-      if (this.managedIdentityClientId) {
-        params.client_id = this.managedIdentityClientId;
+      if (!this.managedIdentityCredential) {
+        const options = this.managedIdentityClientId ? { clientId: this.managedIdentityClientId } : undefined;
+        this.managedIdentityCredential = new ManagedIdentityCredential(options);
       }
-
-      const response = await axios.get(imdsEndpoint, {
-        params,
-        headers: { 'Metadata': 'true' },
-        timeout: 5000
-      });
-
-      const accessToken = response.data?.access_token;
-      const expiresIn = response.data?.expires_in;
-
-      if (!accessToken) {
-        throw new Error('Failed to obtain access token from Managed Identity');
-      }
-
-      // Calculate expiration time
-      const expiresOn = new Date();
-      expiresOn.setSeconds(expiresOn.getSeconds() + (expiresIn || 3600));
-
-      this.cachedToken = { accessToken, expiresOn };
-      return accessToken;
+      const token = await this.managedIdentityCredential.getToken("https://cognitiveservices.azure.com/.default");
+      return token.token;
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-          throw new Error('Not running in Azure environment or Managed Identity not configured');
-        }
-        if (error.response?.status === 400) {
-          throw new Error('Managed Identity not assigned or not authorized for Cognitive Services');
-        }
-      }
       throw new Error(`Managed Identity authentication failed: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
@@ -371,46 +293,6 @@ export class AzureOpenAIProvider extends LLMProvider {
   }
 
   /**
-   * Check if Azure CLI is available
-   */
-  static async isAzureCliAvailable(): Promise<boolean> {
-    try {
-      await execAsync('az --version');
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Check if logged in to Azure CLI
-   */
-  static async isAzureCliAuthenticated(): Promise<boolean> {
-    try {
-      await execAsync('az account show');
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Check if running in Azure environment (for Managed Identity)
-   */
-  static async isAzureEnvironment(): Promise<boolean> {
-    try {
-      const response = await axios.get('http://169.254.169.254/metadata/instance', {
-        params: { 'api-version': '2021-02-01' },
-        headers: { 'Metadata': 'true' },
-        timeout: 2000
-      });
-      return !!response.data;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
    * Get authentication status information
    */
   async getAuthStatus(): Promise<{
@@ -427,27 +309,17 @@ export class AzureOpenAIProvider extends LLMProvider {
         };
       
       case 'azureCli':
-        const cliAvailable = await AzureOpenAIProvider.isAzureCliAvailable();
-        if (!cliAvailable) {
-          return {
-            method: 'azureCli',
-            isAuthenticated: false,
-            message: 'Azure CLI not installed'
-          };
-        }
-        const cliAuthenticated = await AzureOpenAIProvider.isAzureCliAuthenticated();
         return {
           method: 'azureCli',
-          isAuthenticated: cliAuthenticated,
-          message: cliAuthenticated ? 'Logged in via Azure CLI' : 'Not logged in to Azure CLI (run: az login)'
+          isAuthenticated: true, 
+          message: 'Azure CLI authentication (not verified until first request)'
         };
       
       case 'managedIdentity':
-        const isAzure = await AzureOpenAIProvider.isAzureEnvironment();
         return {
           method: 'managedIdentity',
-          isAuthenticated: isAzure,
-          message: isAzure ? 'Running in Azure with Managed Identity' : 'Not in Azure environment'
+          isAuthenticated: true, 
+          message: 'Managed Identity authentication (not verified until first request)'
         };
       
       default:
@@ -460,10 +332,11 @@ export class AzureOpenAIProvider extends LLMProvider {
   }
 
   /**
-   * Clear cached token (useful for testing or forcing refresh)
+   * Clear cached credentials to force a refresh
    */
   clearTokenCache(): void {
-    this.cachedToken = null;
+    this.azureCliCredential = undefined;
+    this.managedIdentityCredential = undefined;
   }
 }
 

@@ -9,15 +9,18 @@ import { LLMProvider, LLMRequest, LLMResponse, ProviderType, ProviderConfig, Pro
 export interface GroqProviderConfig extends ProviderConfig {
   apiKey: string;
   baseUrl?: string;
+  model?: string;
 }
 
 export class GroqProvider extends LLMProvider {
   private http: AxiosInstance;
   private apiKey: string;
+  private defaultModel: string;
 
   constructor(config: GroqProviderConfig) {
     super(config);
     this.apiKey = config.apiKey || (process.env.GROQ_API_KEY as string) || '';
+    this.defaultModel = config.model || 'llama-3.1-8b-instant';
     
     // Validate configuration
     this.validateConfig();
@@ -53,16 +56,18 @@ export class GroqProvider extends LLMProvider {
   }
 
   getDefaultModel(): string {
-    return 'llama3-8b-8192';
+    return this.defaultModel;
   }
 
   getAvailableModels(): string[] {
     return [
-      'llama3-8b-8192',
-      'llama3-70b-8192',
-      'mixtral-8x7b-32768',
-      'gemma-7b-it',
-      'gemma2-9b-it'
+      'llama-3.1-8b-instant',
+      'llama-3.3-70b-versatile',
+      'llama-4-maverick-17b-128e-instruct',
+      'llama-4-scout-17b-16e-instruct',
+      'openai/gpt-oss-120b',
+      'openai/gpt-oss-20b',
+      'mixtral-8x7b-32768'
     ];
   }
 

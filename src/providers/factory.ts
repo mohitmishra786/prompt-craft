@@ -8,6 +8,8 @@ import { LLMProvider, ProviderType, ProviderConfig } from './base';
 import { GroqProvider } from './groq';
 import { OpenAIProvider } from './openai';
 import { AzureOpenAIProvider } from './azure-openai';
+import { OllamaProvider } from './ollama';
+import { ClaudeProvider } from './claude';
 
 /**
  * Provider registry that manages all available providers
@@ -89,6 +91,23 @@ export class ProviderRegistry {
   }
 
   /**
+   * Get a chain of providers for fallback, starting with the active one
+   */
+  getFallbackChain(): LLMProvider[] {
+    const chain: LLMProvider[] = [];
+    const active = this.getActive();
+    if (active) {
+      chain.push(active);
+    }
+
+    // Add other configured providers
+    const others = this.getConfigured().filter(p => !active || p.getType() !== active.getType());
+    chain.push(...others);
+
+    return chain;
+  }
+
+  /**
    * Get active provider type
    */
   getActiveType(): ProviderType | null {
@@ -118,13 +137,15 @@ export class ProviderFactory {
     
     // Initialize Groq provider (existing)
     const groqApiKey = config.get<string>('groqApiKey');
+    const groqModel = config.get<string>('groq.model') || 'llama-3.1-8b-instant';
     const groqTimeout = config.get<number>('requestTimeoutMs') || 5000;
     if (groqApiKey && groqApiKey.trim().length > 0) {
       const groqConfig = {
         name: 'Groq',
         enabled: true,
         timeout: groqTimeout,
-        apiKey: groqApiKey
+        apiKey: groqApiKey,
+        model: groqModel
       };
       const groqProvider = new GroqProvider(groqConfig);
       this.registry.register(groqProvider);
@@ -169,6 +190,41 @@ export class ProviderFactory {
       this.registry.register(azureProvider);
     }
 
+    // Initialize Ollama provider
+    const ollamaEnabled = config.get<boolean>('ollama.enabled', false);
+    const ollamaBaseUrl = config.get<string>('ollama.baseUrl') || 'http://localhost:11434/api';
+    const ollamaModel = config.get<string>('ollama.model') || 'llama3';
+    const ollamaTimeout = config.get<number>('ollama.timeout') || 60000;
+    
+    if (ollamaEnabled) {
+      const ollamaConfig = {
+        name: 'Ollama',
+        enabled: true,
+        timeout: ollamaTimeout,
+        baseUrl: ollamaBaseUrl,
+        model: ollamaModel
+      };
+      const ollamaProvider = new OllamaProvider(ollamaConfig);
+      this.registry.register(ollamaProvider);
+    }
+
+    // Initialize Claude provider
+    const claudeApiKey = config.get<string>('claude.apiKey');
+    const claudeModel = config.get<string>('claude.model') || 'claude-3-sonnet-20240229';
+    const claudeTimeout = config.get<number>('claude.timeout') || 30000;
+    
+    if (claudeApiKey && claudeApiKey.trim().length > 0) {
+      const claudeConfig = {
+        name: 'Claude',
+        enabled: true,
+        timeout: claudeTimeout,
+        apiKey: claudeApiKey,
+        model: claudeModel
+      };
+      const claudeProvider = new ClaudeProvider(claudeConfig);
+      this.registry.register(claudeProvider);
+    }
+
     // Set active provider from settings or use first configured
     const activeProviderType = config.get<string>('activeProvider');
     if (activeProviderType) {
@@ -197,10 +253,10 @@ export class ProviderFactory {
         return new AzureOpenAIProvider(config);
       
       case ProviderType.CLAUDE:
-        throw new Error('Claude provider not yet implemented (Phase 4)');
+        return new ClaudeProvider(config);
       
       case ProviderType.OLLAMA:
-        throw new Error('Ollama provider not yet implemented (Phase 4)');
+        return new OllamaProvider(config);
       
       default:
         throw new Error(`Unknown provider type: ${type}`);

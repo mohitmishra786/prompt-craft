@@ -1,5 +1,6 @@
 import * as vscode from "vscode";
 import { sanitizePrompt } from "./sanitizer";
+import { TemplateManager } from "./templateManager";
 
 export class SidebarProvider implements vscode.WebviewViewProvider {
   _view?: vscode.WebviewView;
@@ -38,6 +39,10 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
             vscode.window.showInformationMessage("Prompt copied to clipboard!");
             break;
         }
+        case "useTemplate": {
+            vscode.commands.executeCommand("prompt-craft.useTemplate", data.value);
+            break;
+        }
       }
     });
   }
@@ -56,6 +61,17 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
           });
       } else {
           vscode.window.showErrorMessage("Prompt Craft Sidebar is not open. Please open it from the Activity Bar.");
+      }
+  }
+
+  public showTemplates(type: 'error' | 'project') {
+      if (this._view) {
+          this._view.show?.(true);
+          const templates = TemplateManager.getInstance().getTemplates(type);
+          this._view.webview.postMessage({
+              type: "show-templates",
+              value: { templates, type }
+          });
       }
   }
 
@@ -134,31 +150,73 @@ export class SidebarProvider implements vscode.WebviewViewProvider {
                     <h2 id="prompt-title">Prompt</h2>
                     <textarea id="prompt-content"></textarea>
                     <button id="copy-btn">Copy to Clipboard</button>
+                    <button id="back-btn" style="background: var(--vscode-button-secondaryBackground); color: var(--vscode-button-secondaryForeground); margin-top: 10px;">Back to Selection</button>
+                </div>
+
+                <div id="template-selection-container" class="hidden">
+                    <h2>Select Template</h2>
+                    <div id="template-list"></div>
                 </div>
 
 				<script nonce="${nonce}">
-                    const vscode = acquireVsCodeApi();
-                    
-                    window.addEventListener('message', event => {
-                        const message = event.data; // The JSON data our extension sent
+                    (function() {
+                        const vscode = acquireVsCodeApi();
                         
-                        switch (message.type) {
-                            case 'show-prompt':
-                                document.getElementById('placeholder').classList.add('hidden');
-                                document.getElementById('prompt-container').classList.remove('hidden');
-                                document.getElementById('prompt-title').innerText = message.value.title;
-                                document.getElementById('prompt-content').value = message.value.content;
-                                break;
-                        }
-                    });
-
-                    document.getElementById('copy-btn').addEventListener('click', () => {
-                        const content = document.getElementById('prompt-content').value;
-                        vscode.postMessage({
-                            type: 'copyToClipboard',
-                            value: content
+                        window.addEventListener('message', event => {
+                            const message = event.data;
+                            
+                            switch (message.type) {
+                                case 'show-prompt':
+                                    document.getElementById('placeholder').classList.add('hidden');
+                                    document.getElementById('template-selection-container').classList.add('hidden');
+                                    document.getElementById('prompt-container').classList.remove('hidden');
+                                    document.getElementById('prompt-title').innerText = message.value.title;
+                                    document.getElementById('prompt-content').value = message.value.content;
+                                    break;
+                                case 'show-templates':
+                                    document.getElementById('placeholder').classList.add('hidden');
+                                    document.getElementById('prompt-container').classList.add('hidden');
+                                    document.getElementById('template-selection-container').classList.remove('hidden');
+                                    renderTemplates(message.value.templates, message.value.type);
+                                    break;
+                            }
                         });
-                    });
+
+                        function renderTemplates(templates, type) {
+                            const list = document.getElementById('template-list');
+                            list.innerHTML = '';
+                            
+                            const defaultBtn = document.createElement('button');
+                            defaultBtn.innerText = "Use Default Template";
+                            defaultBtn.addEventListener('click', () => {
+                                vscode.postMessage({ type: 'useTemplate', value: { id: 'default', type } });
+                            });
+                            list.appendChild(defaultBtn);
+
+                            templates.forEach(t => {
+                                const btn = document.createElement('button');
+                                btn.innerText = "Use: " + t.name;
+                                btn.title = t.description;
+                                btn.addEventListener('click', () => {
+                                    vscode.postMessage({ type: 'useTemplate', value: { id: t.id, type } });
+                                });
+                                list.appendChild(btn);
+                            });
+                        }
+
+                        document.getElementById('copy-btn').addEventListener('click', () => {
+                            const content = document.getElementById('prompt-content').value;
+                            vscode.postMessage({
+                                type: 'copyToClipboard',
+                                value: content
+                            });
+                        });
+
+                        document.getElementById('back-btn').addEventListener('click', () => {
+                            document.getElementById('prompt-container').classList.add('hidden');
+                            document.getElementById('template-selection-container').classList.remove('hidden');
+                        });
+                    })();
                 </script>
 				<script nonce="${nonce}" src="${scriptUri}"></script>
 			</body>

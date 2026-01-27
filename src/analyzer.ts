@@ -2,7 +2,13 @@ import * as vscode from "vscode";
 import * as fs from "fs";
 import * as fsp from "fs/promises";
 import * as path from "path";
-import { extractControllerFunctions, extractMongooseModelFields, inferDomain, InferredDomain } from "./domain";
+import { 
+  extractControllerFunctions, 
+  extractMongooseModelFields, 
+  extractExpressRoutes,
+  inferDomain, 
+  InferredDomain 
+} from "./domain";
 
 export interface PackageJson {
   name?: string;
@@ -29,12 +35,21 @@ export interface ProjectAnalysisResult {
   domain: InferredDomain;
   controllers: { file: string; functions: string[] }[];
   models: { file: string; fields: string[] }[];
+  routes: { file: string; endpoints: string[] }[];
   sampleQueries?: string[];
   fileTree?: string;
+  securityFindings?: string[];
 }
 
+interface AnalysisCache {
+  result: ProjectAnalysisResult;
+  timestamp: number;
+}
+
+let projectAnalysisCache: AnalysisCache | null = null;
+const CACHE_TTL_MS = 30000; // 30 seconds
+
 async function detectTechStack(rootPath: string, pkg?: PackageJson): Promise<string> {
-  // Check for other languages first
   const exists = async (f: string) => {
     try {
       await fsp.stat(path.join(rootPath, f));
@@ -57,13 +72,19 @@ async function detectTechStack(rootPath: string, pkg?: PackageJson): Promise<str
     return "Rust";
   }
 
-  // Fallback to JS/Node
   if (!pkg) return "JavaScript/Node.js";
   const hasTS = pkg.devDependencies?.["typescript"] || pkg.dependencies?.["typescript"];
   return hasTS ? "TypeScript/Node.js" : "JavaScript/Node.js";
 }
 
 export async function analyzeProject(rootPath: string, maxFiles: number = 100): Promise<ProjectAnalysisResult> {
+  // Check cache
+  if (projectAnalysisCache && (Date.now() - projectAnalysisCache.timestamp < CACHE_TTL_MS)) {
+    if (projectAnalysisCache.result.rootPath === rootPath) {
+      return projectAnalysisCache.result;
+    }
+  }
+
   const packageJsonPath = path.join(rootPath, "package.json");
   const readmePath = path.join(rootPath, "README.md");
 
@@ -78,12 +99,13 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
   const domain = await inferDomain(readmeSummary, files, rootPath);
   const controllers = await extractControllerFunctions(files, rootPath);
   const models = await extractMongooseModelFields(files, rootPath);
+  const routes = await extractExpressRoutes(files, rootPath);
   const sampleQueries = await extractSampleQueries(files);
 
-  // Generate ASCII Tree
   const fileTree = generateAsciiTree(files, rootPath);
+  const securityFindings = await runSecurityAnalysis(files);
 
-  return {
+  const result = {
     rootPath,
     techStack,
     dependencies,
@@ -93,9 +115,19 @@ export async function analyzeProject(rootPath: string, maxFiles: number = 100): 
     domain,
     controllers,
     models,
+    routes,
     sampleQueries,
-    fileTree
+    fileTree,
+    securityFindings
   };
+
+  // Update cache
+  projectAnalysisCache = {
+    result,
+    timestamp: Date.now()
+  };
+
+  return result;
 }
 
 export async function getCodeSnippetAround(
@@ -156,28 +188,17 @@ function truncate(s: string, max: number): string {
   return s.slice(0, max - 3) + "...";
 }
 
-/**
- * Replaces recursive fs walk with VS Code's native fast file search.
- * This respects .gitignore and performs significantly better on large repos.
- */
 async function collectFiles(root: string, maxFiles: number): Promise<string[]> {
-  // Broad pattern to capture code and config files
-  // Supports JS/TS ecosystem plus Python, Java, Go, and web standards
   const includePattern = new vscode.RelativePattern(
     root,
     "**/*.{js,ts,jsx,tsx,json,md,py,java,go,html,css,scss,mjs,cjs}"
   );
-
-  // Standard exclusions (node_modules, build artifacts, dotfiles)
-  // VS Code's findFiles automatically respects .gitignore if we don't pass 'useIgnoreFiles=false'
-  // But explicit excludes help reduce noise early
   const excludePattern = "**/{node_modules,.git,out,dist,build,.vscode,coverage,target,bin,obj,vendor}/**";
 
   try {
     const uris = await vscode.workspace.findFiles(includePattern, excludePattern, maxFiles);
     return uris.map((u) => u.fsPath);
   } catch (err) {
-    // Fallback or empty on error (e.g. if VS Code API isn't ready in test env)
     console.error("Error finding files:", err);
     return [];
   }
@@ -217,7 +238,6 @@ function detectHints(dependencies: string[], files: string[]) {
   return { usesExpress, usesReact, usesMongo, hasAuthHints, hasTests };
 }
 
-// Lightweight extraction of simple Mongo queries from code for richer context
 async function extractSampleQueries(files: string[]): Promise<string[]> {
   const queries: string[] = [];
   const targets = files.filter((f) => /\.(js|ts)$/i.test(f));
@@ -261,8 +281,6 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
       
       if (!seenPaths.has(pathSoFar)) {
         seenPaths.add(pathSoFar);
-        
-        // Limit depth to avoid clutter
         if (currentLevel < 4) {
              const connector = isLastPart ? "└── " : "├── ";
              tree.push(`${"  ".repeat(currentLevel)}${connector}${part}`);
@@ -272,10 +290,43 @@ function generateAsciiTree(filePaths: string[], rootPath: string): string {
     });
   });
 
-  // Limit total tree lines to 20 to preserve prompt space
   if (tree.length > 20) {
       return tree.slice(0, 20).join("\n") + "\n  ... (truncated)";
   }
 
   return tree.join("\n");
+}
+
+async function runSecurityAnalysis(filePaths: string[]): Promise<string[]> {
+  // Heuristic-based security pattern detection.
+  // These patterns may produce false positives and are intended to
+  // surface areas for manual review, not definitive vulnerability detection.
+  const findings: string[] = [];
+  const targets = filePaths.filter(f => /\.(js|ts|py|go|java)$/i.test(f)).slice(0, 20);
+
+  const patterns = [
+    { name: "Hardcoded Secret", regex: /(?:key|secret|token|password|passwd|auth)\s*[:=]\s*["'][a-zA-Z0-9_\-\.]{10,}["']/i },
+    { name: "Potential SQL Injection", regex: /\.query\s*\(\s*["'][^?]*\$\{/i },
+    { name: "Insecure Eval", regex: /\beval\s*\(/i },
+    { name: "Weak Cryptography", regex: /\b(md5|sha1)\s*\(/i },
+    { name: "Command Injection", regex: /\b(exec|spawn|system)\s*\(\s*(?:`|\$\{)/i }
+  ];
+
+  for (const file of targets) {
+    try {
+      const content = await fsp.readFile(file, "utf8");
+      const lines = content.split("\n");
+      lines.forEach((line, index) => {
+        patterns.forEach(p => {
+          if (p.regex.test(line)) {
+            findings.push(`${p.name} in ${path.basename(file)}:${index + 1}`);
+          }
+        });
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  return Array.from(new Set(findings)).slice(0, 10);
 }

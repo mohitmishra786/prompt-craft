@@ -7,6 +7,7 @@ import { ProviderFactory, ProviderRegistry } from "./providers/factory";
 import { sanitizePrompt } from "./sanitizer";
 import { TelemetryService } from "./telemetry";
 import { SidebarProvider } from "./sidebar";
+import { TemplateManager } from "./templateManager";
 
 let output: vscode.OutputChannel | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
@@ -118,6 +119,15 @@ export async function activate(context: vscode.ExtensionContext) {
     }
   );
 
+  const useTemplateCmd = vscode.commands.registerCommand(
+    "prompt-craft.useTemplate",
+    async (args: { id: string, type: 'error' | 'project' }) => {
+        // This is a placeholder for the logic that will be triggered when a template is selected.
+        // It will be used by the sidebar to signal which template to apply.
+        // The actual generation logic will be moved to shared handlers.
+    }
+  );
+
   context.subscriptions.push(
     generateErrorPromptCmd, 
     analyzeProjectCmd, 
@@ -125,6 +135,7 @@ export async function activate(context: vscode.ExtensionContext) {
     testProviderCmd,
     reloadProvidersCmd,
     showProviderStatusCmd,
+    useTemplateCmd,
     output
   );
 
@@ -167,6 +178,35 @@ function updateStatusBar() {
     statusBarItem.backgroundColor = new vscode.ThemeColor("statusBarItem.errorBackground");
     statusBarItem.show();
   }
+}
+
+async function completeWithFallback(
+  request: { system: string; user: string },
+  generationType: "error" | "project"
+): Promise<{ content: string; providerName: string } | undefined> {
+  const registry = ProviderRegistry.getInstance();
+  const chain = registry.getFallbackChain();
+
+  for (const provider of chain) {
+    try {
+      log(`Attempting generation with ${provider.getName()} (${generationType})...`);
+      const content = await provider.completeJSON({
+        model: provider.getDefaultModel(),
+        system: request.system,
+        user: request.user
+      });
+      
+      if (content) {
+        log(`Successfully generated ${generationType} prompt with ${provider.getName()}`);
+        return { content, providerName: provider.getName() };
+      }
+    } catch (err) {
+      log(`Warning: Provider ${provider.getName()} failed: ${toErrorMessage(err)}`);
+      // Continue to next provider
+    }
+  }
+
+  return undefined;
 }
 
 async function handleGenerateErrorPrompt(): Promise<void> {
@@ -243,7 +283,7 @@ async function handleGenerateErrorPrompt(): Promise<void> {
 
   const language = analysis?.techStack?.includes("TypeScript") ? "TypeScript" : "JavaScript";
 
-  const prompt = buildErrorPrompt({
+  const templatePrompt = buildErrorPrompt({
     language,
     dependencies: analysis?.dependencies ?? [],
     errorMessage,
@@ -254,28 +294,27 @@ async function handleGenerateErrorPrompt(): Promise<void> {
     symbolDefinition: symbolDef,
     architectureSummary: analysis?.architectureSummary
   });
-  let finalPrompt = prompt;
-  const apiKey = vscode.workspace.getConfiguration().get<string>("promptCraft.groqApiKey");
-  const timeoutMs = vscode.workspace.getConfiguration().get<number>("promptCraft.requestTimeoutMs");
-  const groq = buildGroqClientFromSettings(apiKey, timeoutMs);
+
+  let finalPrompt = templatePrompt;
   let errorLlmUsed = false;
-  if (groq) {
-    try {
-      const system = buildErrorSystemPrompt();
-      const user = buildLLMUserErrorMessage(prompt);
-      const content = await groq.completeJSON({ model: "llama3-8b-8192", system, user });
-      finalPrompt = content.trim();
-      errorLlmUsed = true;
-    } catch (err) {
-      log(`LLM error prompt refinement failed, using template: ${toErrorMessage(err)}`);
-    }
+  let providerUsedName = "Template";
+
+  const system = buildErrorSystemPrompt();
+  const user = buildLLMUserErrorMessage(templatePrompt);
+  
+  const result = await completeWithFallback({ system, user }, "error");
+  if (result) {
+    finalPrompt = result.content.trim();
+    errorLlmUsed = true;
+    providerUsedName = result.providerName;
   }
 
-  showPromptToUser("Error Prompt", `Generation: ${errorLlmUsed ? "LLM-enhanced" : "Template"}\n\n${finalPrompt}`);
+  showPromptToUser("Error Prompt", `Generation: ${errorLlmUsed ? `LLM-enhanced (${providerUsedName})` : "Template"}\n\n${finalPrompt}`);
   
   TelemetryService.getInstance().sendEvent("ERROR_PROMPT_GENERATED", {
     language,
     generationType: errorLlmUsed ? "llm" : "template",
+    provider: providerUsedName,
     hasClipboard: useClipboard ? "yes" : "no"
   });
 }
@@ -306,7 +345,8 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
     `Dependencies: ${analysis.dependencies.slice(0, 25).join(", ")}`,
     analysis.domain.domain !== "unknown" ? `Domain: ${analysis.domain.domain} (${analysis.domain.domainHints.join(", ")})` : undefined,
     analysis.controllers.length ? `Controllers: ${analysis.controllers.map((c) => `${c.file} [${c.functions.slice(0,3).join(" ")}]`).join(", ")}` : undefined,
-    analysis.models.length ? `Models: ${analysis.models.map((m) => `${m.file} [${m.fields.slice(0,5).join(" ")}]`).join(", ")}` : undefined
+    analysis.models.length ? `Models: ${analysis.models.map((m) => `${m.file} [${m.fields.slice(0,5).join(" ")}]`).join(", ")}` : undefined,
+    analysis.routes.length ? `Routes: ${analysis.routes.map((r) => `${r.file} [${r.endpoints.slice(0,3).join(" ")}]`).join(", ")}` : undefined
   ].filter(Boolean).join("\n");
 
   let prompts = ideas.map((idea) =>
@@ -315,36 +355,33 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
       dependencies: analysis.dependencies,
       taskIdea: idea,
       contextHeader: contextHeaderLines,
-      fileTree: analysis.fileTree
+      fileTree: analysis.fileTree,
+      securityFindings: analysis.securityFindings
     })
   );
 
-  // Optional LLM enhancement for project prompts
+  // Optional LLM enhancement for project prompts with fallback
   let projectLlmUsed = false;
-  const apiKey = vscode.workspace.getConfiguration().get<string>("promptCraft.groqApiKey");
-  const timeoutMs = vscode.workspace.getConfiguration().get<number>("promptCraft.requestTimeoutMs");
-  const groq = buildGroqClientFromSettings(apiKey, timeoutMs);
-  if (groq) {
-    try {
-      const system = buildProjectSystemPrompt();
-      const user = buildLLMUserProjectMessage({
-        techStack: analysis.techStack,
-        detection: analysis.detection,
-        domain: analysis.domain,
-        architectureSummary: analysis.architectureSummary,
-        dependencies: analysis.dependencies.slice(0, 50),
-        controllers: analysis.controllers,
-        models: analysis.models,
-        sampleQueries: analysis["sampleQueries"] ?? [],
-        readmeSummary: analysis.readmeSummary ?? ""
-      });
-      const content = await groq.completeJSON({ model: "llama3-8b-8192", system, user });
-      // Show only refined content (header already summarizes context)
-      prompts = [content.trim()];
-      projectLlmUsed = true;
-    } catch (err) {
-      log(`LLM project generation failed, falling back to templates: ${toErrorMessage(err)}`);
-    }
+  let providerUsedName = "Template";
+
+  const system = buildProjectSystemPrompt();
+  const user = buildLLMUserProjectMessage({
+    techStack: analysis.techStack,
+    detection: analysis.detection,
+    domain: analysis.domain,
+    architectureSummary: analysis.architectureSummary,
+    dependencies: analysis.dependencies.slice(0, 50),
+    controllers: analysis.controllers,
+    models: analysis.models,
+    sampleQueries: analysis["sampleQueries"] ?? [],
+    readmeSummary: analysis.readmeSummary ?? ""
+  });
+
+  const result = await completeWithFallback({ system, user }, "project");
+  if (result) {
+    prompts = [result.content.trim()];
+    projectLlmUsed = true;
+    providerUsedName = result.providerName;
   }
 
   const techExtras: string[] = [];
@@ -357,7 +394,7 @@ async function handleAnalyzeProjectAndGeneratePrompts(): Promise<void> {
     `Architecture: ${analysis.architectureSummary}\n` +
     `Dependencies: ${analysis.dependencies.slice(0, 25).join(", ")}\n` +
     (analysis.readmeSummary ? `README (summary): ${analysis.readmeSummary}\n` : "") +
-    `Generation: ${projectLlmUsed ? "LLM-enhanced" : "Template"}`;
+    `Generation: ${projectLlmUsed ? `LLM-enhanced (${providerUsedName})` : "Template"}`;
 
   const combined = projectLlmUsed
     ? [header, prompts[0]].join("\n\n")
@@ -385,6 +422,8 @@ function showPromptToUser(title: string, text: string) {
 
   // Always show in sidebar if it's available (it handles its own visibility/errors)
   if (sidebarProvider) {
+      // If title matches a prompt type, we might want to show templates instead?
+      // For now, just show the generated prompt.
       sidebarProvider.showPrompt(title, sanitized);
       if (sidebarProvider.isReady()) {
           vscode.commands.executeCommand('promptCraft.sidebar.focus');

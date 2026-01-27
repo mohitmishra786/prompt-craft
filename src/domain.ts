@@ -16,6 +16,11 @@ export interface ModelInfo {
   fields: string[];
 }
 
+export interface RouteInfo {
+  file: string;
+  endpoints: string[];
+}
+
 export async function inferDomain(readmeSummary: string | undefined, files: string[], root: string): Promise<InferredDomain> {
   const hints: string[] = [];
   const text = (readmeSummary ?? "") + "\n" + files.map((f) => path.basename(f)).join(" ");
@@ -104,6 +109,34 @@ export async function extractMongooseModelFields(files: string[], root: string):
       if (fields.size > 0) results.push({ file: path.relative(root, file), fields: Array.from(fields).slice(0, 15) });
     } catch {
       // ignore read errors
+    }
+  }
+  return results;
+}
+
+export async function extractExpressRoutes(files: string[], root: string): Promise<RouteInfo[]> {
+  const routeFiles = files.filter((f) => /\broutes?\b|\brouter\b|app\.(js|ts)|server\.(js|ts)|api\.(js|ts)/i.test(f));
+  const results: RouteInfo[] = [];
+
+  for (const file of routeFiles) {
+    try {
+      const raw = await fsp.readFile(file, "utf8");
+      const endpoints = new Set<string>();
+      
+      // router.get('/path', ...) or app.post('/path', ...)
+      const routeRegex = /\.(get|post|put|delete|patch|use)\s*\(\s*['"]([^'"]+)['"]/g;
+      for (const m of raw.matchAll(routeRegex)) {
+        endpoints.add(`${m[1].toUpperCase()} ${m[2]}`);
+      }
+
+      if (endpoints.size > 0) {
+        results.push({ 
+          file: path.relative(root, file), 
+          endpoints: Array.from(endpoints).slice(0, 10) 
+        });
+      }
+    } catch {
+      // ignore
     }
   }
   return results;

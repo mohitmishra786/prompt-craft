@@ -18,6 +18,7 @@ export interface ProjectPromptInput {
   taskIdea: string;
   contextHeader?: string;
   fileTree?: string;
+  securityFindings?: string[];
 }
 
 export function buildProjectPrompt(input: ProjectPromptInput): string {
@@ -34,6 +35,10 @@ export function buildProjectPrompt(input: ProjectPromptInput): string {
 
   if (input.fileTree) {
     contextLines.push(`\nProject Structure:\n${input.fileTree}`);
+  }
+
+  if (input.securityFindings && input.securityFindings.length > 0) {
+    contextLines.push(`\nSecurity Insights (Proactive): Found potential patterns that may need attention:\n- ${input.securityFindings.join("\n- ")}`);
   }
 
   const body = [
